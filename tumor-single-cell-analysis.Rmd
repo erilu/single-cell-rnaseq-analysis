@@ -1,0 +1,29 @@
+---
+title: "Single cell RNAseq analysis of B16 tumor infiltrating immune cells"
+output: 
+  html_document:
+    toc:true
+    toc_float:true
+---
+
+## Introduction
+
+Here, I provide a step by step analysis of the publicly available single cell RNA-sequencing dataset from Ishizuka et al. 2019, using the R package Seurat.
+
+This analysis is meant to serve as an example of how to analyze single cell RNA-sequencing data generated using hte 10X Genomics platform using the R package Seurat. I provide details for each step so that researchers with only basic techniques in R will be able to analyze data of this type. I hope that this will help those whoa re planning to perform their own experiment in the future.
+
+## Load packages
+
+```{r}
+library(Seurat)
+library(tidyverse)
+```
+
+## Read in the Data
+
+```{r}
+raw_data <- Read10X("haining")
+```
+
+Once the raw data is read in, you can create a Seurat object using CreateSeuratObject()
+
