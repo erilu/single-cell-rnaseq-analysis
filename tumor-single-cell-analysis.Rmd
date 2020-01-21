@@ -8,22 +8,71 @@ output:
 
 ## Introduction
 
-Here, I provide a step by step analysis of the publicly available single cell RNA-sequencing dataset from Ishizuka et al. 2019, using the R package Seurat.
+Here, I provide a step by step analysis of the publicly available single cell RNA-sequencing dataset from Ishizuka et al. 2019, using the R package ```Seurat```. This single cell RNA-sequencing dataset was generated using the 10X Genomics platform, and was derived from tumor-infiltrating leukocytes isolated from mouse B16 tumors.
 
-This analysis is meant to serve as an example of how to analyze single cell RNA-sequencing data generated using hte 10X Genomics platform using the R package Seurat. I provide details for each step so that researchers with only basic techniques in R will be able to analyze data of this type. I hope that this will help those whoa re planning to perform their own experiment in the future.
+The publication can be found at: https://www.ncbi.nlm.nih.gov/pubmed/30559380. The data can be downloaded from: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE110746. This data consists of a set of matrices which dictate the cellular barcode, gene name, and expression values for each cell (barcodes.tsv.gz, genes.tsv.gz, and matrix.mtx.gz). These matricies are the standardized output provided by the 10X Genomics software Cell Ranger after processing the raw fastq files.
+
+This analysis is meant to serve as an example of how to analyze single cell RNA-sequencing data generated using the 10X Genomics platform using the R package ```Seurat```. I provide details for each step so that researchers with only basic knowledge of R will be able to analyze a single cell RNA-seq experiment. I hope that this will help researchers who are planning to perform their own single-cell RNA-sequencing experiment have an easier time making sense of their data.
 
 ## Load packages
 
-```{r}
+```{r message=F}
 library(Seurat)
 library(tidyverse)
+
 ```
 
-## Read in the Data
+This analysis was performed using ```Seurat``` version 3.0.2. The ```tidyverse``` package provides a nice set of tools for both data wrangling and visualization.
+
+## Read in the data and create the Seurat object
+
+The ```Read10X``` function is used to read in the data matricies. If you run into issues with this step, check whether your files are named correctly. For this analysis, I had to remove the GSE identifier (e.g. change GSE110746_barcodes.tsv to barcodes.tsv, and so on). I placed the three data files into a directory named "haining", and specified this directory for the data.dir parameter. If you are getting data from a Cell Ranger pipeline, you can find them in the outs/filtered_feature_bc_matrix folder.
 
 ```{r}
-raw_data <- Read10X("haining")
+# Read in data
+raw_data <- Read10X(data.dir = "haining")
 ```
 
-Once the raw data is read in, you can create a Seurat object using CreateSeuratObject()
+Once the raw data is read in, you can create a Seurat object using ```CreateSeuratObject```.
+
+```{r}
+b16 <- CreateSeuratObject(counts = raw_data, min.cells = 3, min.features = 200, project = "b16", names.delim = "-", names.field = 2)
+```
+
+If your data was produced from a single sample, you won't have to use the names.delim or names.field parameters. In this case, the immune infiltrate from 2 ADAR1 KO tumors and 2 control tumors (4 10X samples total) were aggregated using Cell Ranger aggr, resulting in the barcodes having the identifiers that look like: AAACCTGTCACATGCA-ADAR_S1. We can pull out the original identifier of "ADAR_S1" by specifying ```names.delim = "-"``` and ```names.field = 2```.
+
+We can see if this worked correctly by examining the meta.data portion of the Seurat object below.
+
+```{r}
+head(b16@meta.data)
+```
+
+You can also check the attributes of this object by simply calling its name:
+
+```{r}
+b16
+```
+
+## Measure mitochondrial and ribosomal content and filter cells
+
+We can add columns to the meta.data by using ```[[ ]]```. Below, we use regexes to pull out mitochondrial or ribosomal genes, and then assign the proportion of transcripts they represent for each cell using the PercentageFeatureSet function. 
+```{r}
+# add the percentage of these mitochondrial or ribosomal genes to the meta.data
+b16[["percent.mito"]] <- PercentageFeatureSet(object = b16, pattern = "^mt-")
+b16[["percent.ribo"]] <- PercentageFeatureSet(object = b16, pattern = "Rps|Rpl|Mrpl|Mrps")
+
+plot1 <- FeatureScatter(object = b16, feature1 = "nCount_RNA", feature2 = "percent.mito")
+plot2 <- FeatureScatter(object = b16, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot3 <- FeatureScatter(object = b16, feature1 = "nCount_RNA", feature2 = "percent.ribo")
+
+CombinePlots(plots = list(plot1, plot2, plot3))
+```
+
+We can now filter the cells we don't want according to a certain critera using the command below:
+
+```{r}
+b16 <- subset(x = b16, subset = nFeature_RNA > 200 & nFeature_RNA < 8000 & percent.mito < 25 & percent.ribo < 40 )
+```
+
+
 
