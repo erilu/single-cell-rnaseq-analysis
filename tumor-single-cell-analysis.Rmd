@@ -1,9 +1,9 @@
 ---
 title: "Single cell RNAseq analysis of B16 tumor infiltrating immune cells"
-output: 
+output:
   html_document:
-    toc:true
-    toc_float:true
+    toc: true
+    toc_float: true
 ---
 
 ## Introduction
@@ -18,11 +18,12 @@ This analysis is meant to serve as an example of how to analyze single cell RNA-
 
 ```{r message=F}
 library(Seurat)
+library(future)
 library(tidyverse)
-
+options(future.globals.maxSize= 6815744000)
 ```
 
-This analysis was performed using ```Seurat``` version 3.0.2. The ```tidyverse``` package provides a nice set of tools for both data wrangling and visualization.
+This analysis was performed using ```Seurat``` version 3.0.2. I also use the ```future``` package in order to speed things up, as some of the processing steps take a long time. The ```tidyverse``` package provides a nice set of tools for both data wrangling and visualization.
 
 ## Read in the data and create the Seurat object
 
@@ -41,10 +42,16 @@ b16 <- CreateSeuratObject(counts = raw_data, min.cells = 3, min.features = 200, 
 
 If your data was produced from a single sample, you won't have to use the names.delim or names.field parameters. In this case, the immune infiltrate from 2 ADAR1 KO tumors and 2 control tumors (4 10X samples total) were aggregated using Cell Ranger aggr, resulting in the barcodes having the identifiers that look like: AAACCTGTCACATGCA-ADAR_S1. We can pull out the original identifier of "ADAR_S1" by specifying ```names.delim = "-"``` and ```names.field = 2```.
 
-We can see if this worked correctly by examining the meta.data portion of the Seurat object below.
+We can see if this worked correctly by examining the meta.data portion of the Seurat object below, seeing if sample names such as "ADAR_S1" show up in the ```orig.ident``` column. Here, a cell is represented by its barcode value, and its attributes can be found as a rowname in ```b16@meta.data```. You can find the raw expression value for each gene in the transcriptome as a column in ```b16@assays$RNA@data```.
 
 ```{r}
 head(b16@meta.data)
+```
+
+A quick glance at the unique values in ```orig.ident``` shows the 4 biological samples that were aggregated:
+
+```{r}
+unique(b16@meta.data$orig.ident)
 ```
 
 You can also check the attributes of this object by simply calling its name:
@@ -53,9 +60,18 @@ You can also check the attributes of this object by simply calling its name:
 b16
 ```
 
+Each gene is considered a "feature", and each cell is considered a "sample".
+
 ## Measure mitochondrial and ribosomal content and filter cells
 
-We can add columns to the meta.data by using ```[[ ]]```. Below, we use regexes to pull out mitochondrial or ribosomal genes, and then assign the proportion of transcripts they represent for each cell using the PercentageFeatureSet function. 
+We can add columns to the meta.data by using ```[[ ]]```. Below, we use regexes to pull out mitochondrial or ribosomal genes, and then assign the proportion of transcripts they represent for each cell using the PercentageFeatureSet function. It's always a good idea to first check that your regex is pulling out the right genes:
+
+```{r eval=F}
+# check whether you are getting the genes you want
+grep("^mt-", rownames(b16@assays$RNA@data), value = T)
+grep("Rps|Rpl|Mrpl|Mrps", rownames(b16@assays$RNA@data), value = T)
+```
+
 ```{r}
 # add the percentage of these mitochondrial or ribosomal genes to the meta.data
 b16[["percent.mito"]] <- PercentageFeatureSet(object = b16, pattern = "^mt-")
@@ -68,11 +84,78 @@ plot3 <- FeatureScatter(object = b16, feature1 = "nCount_RNA", feature2 = "perce
 CombinePlots(plots = list(plot1, plot2, plot3))
 ```
 
-We can now filter the cells we don't want according to a certain critera using the command below:
+We observe that there are some cells in each treatment condition that have high levels of mitochondrial and ribosomal gene expression. We choose to filter out these cells, because they are likely to be dead or dying.
 
 ```{r}
 b16 <- subset(x = b16, subset = nFeature_RNA > 200 & nFeature_RNA < 8000 & percent.mito < 25 & percent.ribo < 40 )
 ```
+
+I chose a threshold of 25% for mitochondrial genes and This threshold is just an approximation, and in some cases may not filter out all the truly dead/dying cells. If there are remaining dead/dying cells, they will often form their own subcluster, and can be removed using the later on using the subset() function. We can observe how many cells were filtered out by simply calling the object name and comparing with the output above.
+
+```{r}
+b16
+```
+
+We observe that there are 8755 cells remaining, down from the original 8834.
+
+## Data normalization and cell clustering
+
+Now that we have created the Seurat object and performed some initial filtering of dead cells, we can move onto data normalization, clustering, and cell identification. These are all performed using built-in functions within the Seurat R package, which are executed sequentially to process the object. Seurat objects are large and consume a lot of memory, so usually I continue to overwrite the same object at each step.
+
+```{r eval=F}
+b16 <- NormalizeData(b16, normalization.method = "LogNormalize", scale.factor = 10000)
+b16 <- FindVariableFeatures(b16, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(b16)
+plan("multiprocess", workers = 10)
+b16 <- ScaleData(b16, features = all.genes, vars.to.regress = c("nCount_RNA", "percent.mito", "percent.ribo"))
+plan("multiprocess", workers = 1)
+```
+
+```{r include = F}
+# in order to speed up knitting the R notebook, I pre-load the processed object here
+load("b16_all_v3.Robj")
+```
+
+Once the values have been normalized and scaled, we can begin to cluster each cell based on their gene expression patterns. Our goal is that cells that express similar patterns of genes (high gene "X", low gene "Y", etc.) will cluster together. To do this, we use the ```RunPCA``` function.
+
+```{r}
+b16 <- RunPCA (b16, features = VariableFeatures(object = b16), ndims.print = 1:2)
+ElbowPlot(object = b16, ndims = 50)
+```
+
+We have the liberty of determining the number of PCs to choose for downstream clustering functions. Seurat uses graph-based cluster identification, and a common way of visualizing the clustering pattern is through t-distributed stochastic neighbor embedding (tSNE). Both of these steps require us to imput the number of PCs to use.
+
+Here, I visually inspect the scree plot to determine how many PCs to choose, usually selecting a number at which the standard deviation "flattens" out, after which adding more PCs only mimimally reduces standard deviation.
+
+```{r include = F}
+# in order to speed up knitting the R notebook, I pre-load the processed object here
+load("b16_all_v3.Robj")
+```
+
+```{r eval=F}
+b16 <- FindNeighbors(b16, dims = 1:40)
+b16 <- FindClusters(b16, resolution = c(0.2, 0.4, 0.6))
+b16 <- RunTSNE(b16, dims = 1:40)
+```
+
+The resolution parameter for the ```FindClusters``` function is what you have to pay the most attention to. A higher resolution value will result in a larger number of clusters being identified, and vice versa. It dictates how over- or under- clustered your cells will be. Often times, you will have to try a bunch of different resolution values, examine how your cells cluster in each scenario, and determine which makes the most biological sense. In my opinion, it is safer to choose a lower resolution to begin with, and then sub-cluster individual clusters of interest to determine whether there is any further heterogeneity that is biologically relevant.
+
+Here, we pass a vector of resolution values ranging from 0.2 to 0.6 to ```FindClusters```. We observe that the cluster attributions are defined as columns in ```b16@meta.data```. The field ```b16@active.ident``` houses the cluster definitions for the "right-most" resolution of 0.6.
+
+```{r}
+head(b16@meta.data)
+```
+
+Now that clusters have been assigned, we can visualize the clustering patterns using the built-in Seurat function, ```DimPlot```, using the t-SNE dimentionality reduction option. The visualization functions within Seurat will utilize the clustering information from ```active.ident``` by default, unless the ```group.by``` parameter is specified. Below, I plot the t-SNE plot for each resolution.
+
+```{r}
+DimPlot(b16, label = T, reduction = "tsne", group.by = "RNA_snn_res.0.2")
+DimPlot(b16, label = T, reduction = "tsne", group.by = "RNA_snn_res.0.4")
+DimPlot(b16, label = T, reduction = "tsne", group.by = "RNA_snn_res.0.6")
+```
+
+We observe that as the resolution factor increases, more clusters are shown, and that the biggest jump in the number of clusters occurs between resolution 0.2 and resolution 0.4. Often times, rare clusters with small numbers of cells will appear at higher resolutions. These rare clusters may have biological significance, and should be separated from other cell types when possible. For example, cluster 1 in resolution 0.2 appears to be a T cell cluster, but further separates into two clusters at a resolution of 0.4: a large cluster of CD8+ T cells (cluster 2, resolution 0.4) and a much smaller but distinct population of T-regulatory cells (cluster 11, resolution 0.4).
+
 
 
 
