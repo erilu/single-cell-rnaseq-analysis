@@ -100,7 +100,7 @@ We observe that there are 8755 cells remaining, down from the original 8834.
 
 ## Data normalization and cell clustering
 
-Now that we have created the Seurat object and performed some initial filtering of dead cells, we can move onto data normalization, clustering, and cell identification. These are all performed using built-in functions within the Seurat R package, which are executed sequentially to process the object. Seurat objects are large and consume a lot of memory, so usually I continue to overwrite the same object at each step.
+Now that we have created the Seurat object and performed some initial filtering of dead cells, we can move onto data normalization, clustering, and cell identification. These are all performed using built-in functions within the Seurat R package, which are executed sequentially to process the object. Seurat objects are large and consume a lot of memory, so usually I continue to overwrite the same object at each step. The ```ScaleData``` function typically takes a lot of computing power and a long time to run, so here I use the future package to speed things up with multi-core processing. Essentially, these steps log-transform the expression values and scale each cell based its total read count (UMI) and mitochondrial / ribosomal percentage.
 
 ```{r eval=F}
 b16 <- NormalizeData(b16, normalization.method = "LogNormalize", scale.factor = 10000)
@@ -125,7 +125,7 @@ ElbowPlot(object = b16, ndims = 50)
 
 We have the liberty of determining the number of PCs to choose for downstream clustering functions. Seurat uses graph-based cluster identification, and a common way of visualizing the clustering pattern is through t-distributed stochastic neighbor embedding (tSNE). Both of these steps require us to imput the number of PCs to use.
 
-Here, I visually inspect the scree plot to determine how many PCs to choose, usually selecting a number at which the standard deviation "flattens" out, after which adding more PCs only mimimally reduces standard deviation.
+Here, I visually inspect the scree plot to determine how many PCs to choose, usually selecting a number at which the standard deviation "flattens" out, after which adding more PCs only mimimally reduces standard deviation. Here, I will choose 40 PCs. A more systematic way of choosing the PCs can be implemented, but from my experience, choosing PCs within 10% of this range has not impacted cluster identification. After choosing the number of PCs to use, we can run the clustering functions below:
 
 ```{r include = F}
 # in order to speed up knitting the R notebook, I pre-load the processed object here
@@ -138,7 +138,7 @@ b16 <- FindClusters(b16, resolution = c(0.2, 0.4, 0.6))
 b16 <- RunTSNE(b16, dims = 1:40)
 ```
 
-The resolution parameter for the ```FindClusters``` function is what you have to pay the most attention to. A higher resolution value will result in a larger number of clusters being identified, and vice versa. It dictates how over- or under- clustered your cells will be. Often times, you will have to try a bunch of different resolution values, examine how your cells cluster in each scenario, and determine which makes the most biological sense. In my opinion, it is safer to choose a lower resolution to begin with, and then sub-cluster individual clusters of interest to determine whether there is any further heterogeneity that is biologically relevant.
+The resolution parameter for the ```FindClusters``` function is what you have to pay the most attention to. A higher resolution value will result in a larger number of clusters being identified, and vice versa. It dictates how over- or under- clustered your cells will be. Often times, you will have to try a bunch of different resolution values, examine how your cells cluster in each scenario, and determine which makes the most biological sense. You should ask yourself questions such as: do I observe cell clusters that are biologically distinct being aggregated with each other (e.g. NK cells and T cells being combined in the same cluster)? If so, your resolution is too low and should be higher. In contrast, if you observe multiple clusters of what appears to be the same cell type, you might have chosen too high of a resolution. That being said, single cell RNA-sequencing is great at detecting novel sub-populations of cells and revealing heterogeneity within what we previously may have thought to have been a single cell type. It is important to invest time into determining whether you are observing true biological heterogeneity vs. an artefact of choosing too high of a resolution. In my opinion, it is safer to choose a lower resolution to begin with, and then sub-cluster individual clusters of interest to determine whether there is any further heterogeneity that is biologically relevant. I will show an example of this later on in the analysis.
 
 Here, we pass a vector of resolution values ranging from 0.2 to 0.6 to ```FindClusters```. We observe that the cluster attributions are defined as columns in ```b16@meta.data```. The field ```b16@active.ident``` houses the cluster definitions for the "right-most" resolution of 0.6.
 
@@ -146,7 +146,7 @@ Here, we pass a vector of resolution values ranging from 0.2 to 0.6 to ```FindCl
 head(b16@meta.data)
 ```
 
-Now that clusters have been assigned, we can visualize the clustering patterns using the built-in Seurat function, ```DimPlot```, using the t-SNE dimentionality reduction option. The visualization functions within Seurat will utilize the clustering information from ```active.ident``` by default, unless the ```group.by``` parameter is specified. Below, I plot the t-SNE plot for each resolution.
+Now that clusters have been assigned, we can visualize the clustering patterns using the built-in Seurat function, ```DimPlot```, using the t-SNE dimentionality reduction option. The visualization functions within Seurat will utilize the clustering information from ```active.ident``` by default, unless the ```group.by``` parameter is specified. Below, I plot the t-SNE plot for each resolution. You can also swap the active.ident with any of the columns in the meta.data using the function SetIdent.
 
 ```{r}
 DimPlot(b16, label = T, reduction = "tsne", group.by = "RNA_snn_res.0.2")
@@ -154,8 +154,108 @@ DimPlot(b16, label = T, reduction = "tsne", group.by = "RNA_snn_res.0.4")
 DimPlot(b16, label = T, reduction = "tsne", group.by = "RNA_snn_res.0.6")
 ```
 
-We observe that as the resolution factor increases, more clusters are shown, and that the biggest jump in the number of clusters occurs between resolution 0.2 and resolution 0.4. Often times, rare clusters with small numbers of cells will appear at higher resolutions. These rare clusters may have biological significance, and should be separated from other cell types when possible. For example, cluster 1 in resolution 0.2 appears to be a T cell cluster, but further separates into two clusters at a resolution of 0.4: a large cluster of CD8+ T cells (cluster 2, resolution 0.4) and a much smaller but distinct population of T-regulatory cells (cluster 11, resolution 0.4).
+We observe that as the resolution factor increases, more clusters are shown, and that the biggest jump in the number of clusters occurs between resolution 0.2 and resolution 0.4. Often times, rare clusters with small numbers of cells will appear at higher resolutions. These rare clusters may have biological significance, and should be separated from other cell types when possible. For example, cluster 1 in resolution 0.2 appears to be a T cell cluster, but further separates into two clusters at a resolution of 0.4: a large cluster of CD8+ T cells (cluster 2, resolution 0.4) and a much smaller but distinct population of T-regulatory cells (cluster 11, resolution 0.4). I can make this judgement by examining the expression patterns of the genes CD8a, which defines CD8+ T cells, and Foxp3, which defines T-regulatory cells using a FeaturePlot (expression of a gene overlaid on top of a t-SNE plot):
 
+```{r}
+FeaturePlot(b16, c("Cd8a", "Foxp3"))
+```
 
+T-regulatory cells have vastly different functional properties compared to cytotoxic CD8+ T cells, and should definitely be given their own cluster definition. Based on this observation, I would determine 0.2 as too "low" of a resolution and choose either 0.4 or 0.6. Resolution 0.4 and 0.6 look very similar, except that cluster 6 from resolution 0.4 splits into clusters 6 and 11 in resolution 0.6. I will choose resolution 0.6 to work with for the rest of the analysis.
 
+## Identify cell types based on marker expression
 
+Aside from examining gene expression patterns using ```FeaturePlot```, a more in-depth way of identifying the cell types corresponding to each cluster can be performed by finding cluster-specific genes using the function ```FindAllMarkers```. This function will return the genes that are most highly upregulated in each cluster compared to all other clusters. We can then read through the top 30 genes for each cluster and use these genes to judge what cell type they define.
+
+```{r eval=F}
+# determine cell type-specific markers using FindAllMarkers
+plan("multiprocess", workers = 10)
+b16.markers <- FindAllMarkers(b16, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+plan("multiprocess", workers = 1)
+
+# save this to file if you want to come back to them
+# save(b16.markers, file = "b16_all_markers_res06_v3.Robj")
+```
+
+```{r include=F}
+# in order to speed up knitting the R notebook, I pre-load the processed object here
+load("b16_all_markers_res06_v3.Robj")
+```
+
+```{r}
+b16.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+```
+
+Sifting through this table, we can assign cell types to each of the clusters. For example, cluster 1 is defined by high Ly6c2, Plac8, and Ccr2 expression which are all canonical monocyte markers, so it is likely that these represent monocytes. Similarly, cluster 2 has high Cd8a, Cd8b1, and Gzmb expression, suggesting that these cells are CD8+ cytotoxic T cells. I use this same thought process to identify each of the clusters in the dataset, and then store these designations in the variable ```new.cluster.ids``` below. I can use ```RenameIdents``` to rename the clusters and then display the labels on top of each cluster on the t-SNE plot.
+
+```{r}
+# res 0.6 cluster labels
+new.cluster.ids <- c("0- C1Q-hi TAM",
+                     "1- Monocyte",
+                     "2- CD8 T cell",
+                     "3- Arg1-hi TAM",
+                     "4- Melanocyte",
+                     "5- Folr2-hi TAM",
+                     "6- cDC2",
+                     "7- Melanocyte",
+                     "8- cDC1",
+                     "9- Migratory DC",
+                     "10- NK",
+                     "11- MHCII-hi TAM",
+                     "12- Treg",
+                     "13- Melanocyte",
+                     "14- Fibroblast",
+                     "15- pDC",
+                     "16- Hemophagocyte TAM"
+                     )
+
+b16.labeled <- b16
+names(new.cluster.ids) <- levels(b16.labeled)
+b16.labeled <- RenameIdents(b16.labeled, new.cluster.ids)
+
+DimPlot(b16.labeled, label = T, reduction = "tsne")
+```
+
+As expected, most of the cell types that come from similar origins cluster closely with one another. The different types of tumor associated macrophages (TAMs) seem to cluster near each other, likewise for the different types of dendritic cells. 
+
+## Subsetting, reclustering, and aggregating
+
+Since we are interested in the tumor immune infiltrate, it makes sense to remove all the non-immune cells in the dataset. According to the materials and methods section of the manuscript, B16 tumor cells were spiked in to the sample, which likely corresponds to the melanocyte clusters we defined above. We also observe a small population of fibroblasts (cluster 14) that can also be removed. We can double-check that these cells are non-immune cells by checking for Ptprc (CD45) expression.
+
+```{r}
+FeaturePlot(b16.labeled, "Ptprc")
+VlnPlot(b16.labeled, "Ptprc")
+```
+
+We observe that clusters 4, 7, 13, and 14 indeed have low CD45 expression. We can remove these cells using the ```subset``` function. Although cluster 16 also has low CD45 expression, the genes that define this cluster very closely resemble a novel macrophage population called hemophagocytes (Akilesh et al. 2019), which in my opinion qualifies it for inclusion as an "immune cell" despite its low CD45 expression.
+
+```{r}
+# remove non-immune cell clusters 4, 7, 13, 14
+# since the cluster numbers start at 0 instead of 1, have to indicies by 1 in order to subtract the clusters from vector
+b16 <- subset(b16, idents = c(0:16)[-c(5,8,14,15)])
+DimPlot(b16, label = T, reduction = "tsne")
+```
+
+After removing the non-immune cells, we re-run the normalization, scaling, and clustering functions.
+
+```{r eval = F}
+# re-normalize and scale the object after removing the non-CD45+ clusters
+b16 <- NormalizeData(b16, normalization.method = "LogNormalize", scale.factor = 10000)
+b16 <- FindVariableFeatures(b16, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(b16)
+plan("multiprocess", workers = 10)
+b16 <- ScaleData(b16, features = all.genes, vars.to.regress = c("nCount_RNA", "percent.mito", "percent.ribo"))
+plan("multiprocess", workers = 1)
+b16 <- RunPCA (b16, features = VariableFeatures(object = b16))
+b16 <- FindNeighbors(b16, dims = 1:40)
+b16 <- FindClusters(b16, resolution = c(0.6))
+b16 <- RunTSNE(b16, dims = 1:40)
+```
+
+```{r include = F}
+# in order to speed up knitting the R notebook, I pre-load the processed object here
+load("b16_immune_v3.Robj")
+```
+
+```{r}
+DimPlot(b16, label = T, reduction = "tsne")
+```
