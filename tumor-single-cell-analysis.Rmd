@@ -259,3 +259,146 @@ load("b16_immune_v3.Robj")
 ```{r}
 DimPlot(b16, label = T, reduction = "tsne")
 ```
+
+Aftwerwards, we can identify the cell types in the filtered, re-clustered object just as we did before, by first finding the cluster-specific markers using ```FindAllMarkers``` and then using these markers to assign cell types.
+
+```{r eval=F}
+plan("multiprocess", workers = 10)
+b16.markers <- FindAllMarkers(b16, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+plan("multiprocess", workers = 1)
+```
+
+```{r include=F}
+# in order to speed up knitting the R notebook, I pre-load the processed object here
+load("b16_markers_res06_immune_v3.Robj")
+```
+
+```{r}
+b16.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+```
+
+```{r}
+
+new.cluster.ids <- c("0- Activated Monocyte",
+                     "1- C1Q-hi TAM",
+                     "2- Arg1-hi TAM",
+                     "3- CD8 T cell",
+                     "4- Folr2-hi TAM",
+                     "5- cDC2",
+                     "6- Classical Monocyte",
+                     "7- Treg",
+                     "8- cDC1",
+                     "9- NK cell",
+                     "10- MHCII-hi TAM",
+                     "11- Migratory DC",
+                     "12- pDC",
+                     "13- Hemophagocyte TAM"
+                     )
+b16.labeled <- b16
+names(new.cluster.ids) <- levels(b16.labeled)
+b16.labeled <- RenameIdents(b16.labeled, new.cluster.ids)
+
+DimPlot(b16.labeled, label = T, reduction = "tsne")
+```
+
+We observe a similar set of cell types as before, except that the monocytes have now split up into two groups. Based on the gene expression that define each group, there appears to be an activated population (cluster 0) and an unactivated population (cluster 6).
+
+The clusters are by default ordered by cell abundance, which makes looking at some of the visualizations complicated. It makes more intuitive sense to lump each cell type together (all monocytes together, all tams together, etc). You can reorder the clusters by manually specifying the order in the levels parameter of ```factor()```:
+
+```{r}
+# reorder by cell type:
+reordered.new.cluster.ids <- c("0- Activated Monocyte",
+                               "6- Classical Monocyte",
+                               "1- C1Q-hi TAM",
+                               "2- Arg1-hi TAM",
+                               "4- Folr2-hi TAM",
+                               "10- MHCII-hi TAM",
+                               "13- Hemophagocyte TAM",
+                               "8- cDC1",
+                               "5- cDC2",
+                               "11- Migratory DC",
+                               "12- pDC",
+                               "3- CD8 T cell",
+                               "7- Treg",
+                               "9- NK cell"
+                              )
+
+b16.labeled@active.ident <- factor (b16.labeled@active.ident, levels = reordered.new.cluster.ids)
+
+DimPlot(b16.labeled, label = T, reduction = "tsne")
+VlnPlot(b16.labeled, "Cd40")
+
+
+plot_proportions <- function (seuratobj){
+  proportions <- table(seuratobj@active.ident)/length(seuratobj@active.ident)*100
+  proportions <- as.data.frame(proportions)
+  ggplot(proportions , aes (x = Var1, y = Freq))+
+    geom_bar(stat = "identity", aes(fill = Var1))+
+    theme_classic()+
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+    labs (x = NULL, y = "Percent of total cells", title = "Cell abundance by cluster")+
+    theme(axis.text.x = element_text(size = 12, color = "black"), axis.text.y = element_text(size = 12, color = "black"))+
+    NoLegend()
+}
+
+plot_proportions(b16.labeled)
+
+```
+
+If desired, clusters can be combined by naming them with the exact same names and using ```RenameIdents```. This type of aggregation can be performed when you wish to lump common cell types together. It is useful when you want to gain a high-level overview of the cellular composition of the dataset.
+
+```{r}
+combined.cluster.ids <- c("Monocyte",
+                     "TAM",
+                     "TAM",
+                     "CD8",
+                     "TAM",
+                     "cDC2",
+                     "Monocyte",
+                     "Treg",
+                     "cDC1",
+                     "NK",
+                     "TAM",
+                     "Migratory DC",
+                     "pDC",
+                     "TAM"
+                     )
+b16.combined <- b16
+names(combined.cluster.ids) <- levels(b16.combined)
+b16.combined <- RenameIdents(b16.combined, combined.cluster.ids)
+
+# reorder the clusters based on myeloid and lymphoid
+b16.combined@active.ident <- factor(b16.combined@active.ident, levels = c("TAM", "Monocyte", "cDC1", "cDC2", "pDC", "Migratory DC", "CD8", "Treg", "NK"))
+```
+
+Using this method, these combined cluster designations are stored in the active.ident portion of the seurat object. The functions in Seurat will by default access ```active.ident```, so they all still work as expected:
+
+```{r}
+DimPlot(b16.combined, label = T, reduction = "tsne")
+plot_proportions(b16.combined)
+```
+
+```{r eval=F}
+plan("multiprocess", workers = 10)
+b16.markers <- FindAllMarkers(b16.combined, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+plan("multiprocess", workers = 1)
+```
+
+```{r include=F}
+# in order to speed up knitting the R notebook, I pre-load the processed object here
+load("b16_markers_aggregated_v3.Robj")
+```
+
+```{r}
+b16.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+```
+
+## Visualizations
+
+At this point, we can start performing some visualizations in order to gain insight from the data. We can start to answer questions such as:
+
+*which cell types express gene X?
+*what percent of each cell type is represented in the dataset?
+*how do the percentages change in the WT tumors compared to the KO tumors?
+
+I will first showcase the basic built-in visualizations that come with the Seurat package. Then, I go more in-depth into various types of visualizations and data mining that can be performed on this processed Seurat object. For the purposes of this demonstration, I will be using the version of the Seurat object in which I've aggregated the clusters by cell type.
