@@ -402,3 +402,60 @@ At this point, we can start performing some visualizations in order to gain insi
 *how do the percentages change in the WT tumors compared to the KO tumors?
 
 I will first showcase the basic built-in visualizations that come with the Seurat package. Then, I go more in-depth into various types of visualizations and data mining that can be performed on this processed Seurat object. For the purposes of this demonstration, I will be using the version of the Seurat object in which I've aggregated the clusters by cell type.
+
+### Built-in Seurat Visualizations
+
+#### 1. FeaturePlot
+
+The ```FeaturePlot``` is one of the most useful functions for determining gene expression patterns in your dataset. This, used in conjunction with the t-SNE plot, can be used side-by-side to visually assess which cell types express a given gene.
+
+```{r}
+fp <- FeaturePlot(b16.combined, "Ccr2", pt.size = 0.8)+NoLegend()
+tp <- DimPlot(b16.combined, pt.size = 0.8, label = T, reduction = "tsne")+NoLegend()
+CombinePlots(plots = list(tp,fp))
+```
+
+In the example above, we observe that the chemokine receptor Ccr2 is expressed by cells in the monocyte cluster, as expected based on the literature. The beauty of single cell RNA-seq is that we can also assess the expression of this receptor in all the other cell types as well. Visually, we can observe that Tregs, NK cells, and cDC2 also express Ccr2 to a high degree.
+
+#### 2. VlnPlot
+
+The FeaturePlots above are nice to make a visually compelling argument, but it is necessary to quantitate the amount of signal observed in each cluster. To do this, we can use the built-in function ```VlnPlot```, which will display the expression of a given gene in each of the clusters in ```active.ident```.
+
+```{r}
+VlnPlot(b16.combined, "Ccr2", pt.size =0.1)
+```
+
+The width of the violin plot is a measure of the proportion of cells at the corresponding expression level. We observe that the monocyte cluster expresses the highest level of Ccr2.
+
+#### 3. RidgePlot
+
+
+#### 4. DotPlot
+
+If you wish to compare the expression of several genes at the same time across all clusters, the ```DotPlot``` is a very useful way of doing so. The size of the dots in the plot correspond do the percentage of cells within the cluster that are positive for expression (have an expression value > 0). The color of the dot represents the magnitude of expression of the cells that are positive (i.e. do they express high levels, or low levels of the gene relative to other clusters?).
+
+```{r}
+cluster_specific_genes <- c("C1qa", "Apoe","Ly6c2", "Ccr2", "Xcr1", "Clec9a", "Cd209a", "Clec4a4", "Siglech", "Ccr9", "Ccr7", "Fscn1", "Cd8a", "Cd3e", "Foxp3", "Il2ra", "Ncr1", "Klra4")
+
+# can feed in an RColorBrewer pallete, I chose RdBu here
+DotPlot(b16.combined, features = rev(cluster_specific_genes), cols = "RdBu", plot.legend = T, x.lab.rot = 90)+
+  theme(axis.text.x = element_text( angle = 90))
+```
+
+
+#### 5. Heatmap
+
+
+### Self-made Visualizations
+
+#### 1. Cell proportion plot
+
+```{r}
+
+```
+
+#### 2. 
+
+
+### Cosmetic changes
+
