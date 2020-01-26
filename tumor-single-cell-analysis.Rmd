@@ -409,13 +409,19 @@ I will first showcase the basic built-in visualizations that come with the Seura
 
 The ```FeaturePlot``` is one of the most useful functions for determining gene expression patterns in your dataset. This, used in conjunction with the t-SNE plot, can be used side-by-side to visually assess which cell types express a given gene.
 
-```{r}
+```{r fig.width=10, fig.height=5}
 fp <- FeaturePlot(b16.combined, "Ccr2", pt.size = 0.8)+NoLegend()
 tp <- DimPlot(b16.combined, pt.size = 0.8, label = T, reduction = "tsne")+NoLegend()
 CombinePlots(plots = list(tp,fp))
 ```
 
-In the example above, we observe that the chemokine receptor Ccr2 is expressed by cells in the monocyte cluster, as expected based on the literature. The beauty of single cell RNA-seq is that we can also assess the expression of this receptor in all the other cell types as well. Visually, we can observe that Tregs, NK cells, and cDC2 also express Ccr2 to a high degree.
+In the example above, we observe that the chemokine receptor Ccr2 is expressed by cells in the monocyte cluster, as expected based on the literature. The beauty of single cell RNA-seq is that we can also assess the expression of this receptor in all the other cell types as well. Visually, we can observe that Tregs, NK cells, and cDC2 also express Ccr2 to a high degree. Furthermore, you can plot two genes on top of the same plot by setting ```blend = T```. This allows for some interesting comparisons to be made between pairs of genes that may have biological significance.
+
+```{r fig.width=12,fig.height =3}
+FeaturePlot(b16.combined, c("Ccl2", "Ccr2"), blend = T)
+```
+
+In this case, I plot Ccr2 with its ligand, Ccl2. This gives me insight into which cells express the ligand for Ccl2, and which cells have its receptor, Ccr2. It is likely that Ccr2+ cells (monocytes, Tregs, etc.) will migrate into proximity with Ccl2+ cells (Tumor associated macrophages).
 
 #### 2. VlnPlot
 
@@ -429,6 +435,11 @@ The width of the violin plot is a measure of the proportion of cells at the corr
 
 #### 3. RidgePlot
 
+An alternative to the ```VlnPlot``` is the ```RidgePlot```, which you can think of as flippin the violin plot on its side. This provides a density histogram that displays the magnitude and proportion of cells that express the gene for each cluster. Those who are used to looking at flow cytometry histograms may enjoy this type of plot more.
+
+```{r}
+RidgePlot(b16.combined, "Ccr2")
+```
 
 #### 4. DotPlot
 
@@ -437,14 +448,42 @@ If you wish to compare the expression of several genes at the same time across a
 ```{r}
 cluster_specific_genes <- c("C1qa", "Apoe","Ly6c2", "Ccr2", "Xcr1", "Clec9a", "Cd209a", "Clec4a4", "Siglech", "Ccr9", "Ccr7", "Fscn1", "Cd8a", "Cd3e", "Foxp3", "Il2ra", "Ncr1", "Klra4")
 
-# can feed in an RColorBrewer pallete, I chose RdBu here
-DotPlot(b16.combined, features = rev(cluster_specific_genes), cols = "RdBu", plot.legend = T, x.lab.rot = 90)+
-  theme(axis.text.x = element_text( angle = 90))
+# can feed in an RColorBrewer pallete, I chose RdBu here, also adjusted the x-axis labels to match tick marks
+DotPlot(b16.combined, features = rev(cluster_specific_genes), cols = "RdBu", plot.legend = T)+
+  theme(axis.text.x = element_text( angle = 90, vjust = 0.5, hjust = 1))
 ```
 
+Here, I chose to plot some genes that are described in the literature to be specific to each cell type defined in our dataset. We observe that most of the genes are indeed specifically expressed by their cell types, with the exception of Ly6c2, which we observe to be expressed at the highest level in pDCs rather than monocytes.
+
+We can also use the dot plot to make knockout vs wildtype comparisons in this dataset. In the example below, I can subset on a specific group (in this case, CD8 T cells) and then assess the activation / exhaustion level in CD8 T cells from the KO vs WT samples using a DotPlot. These genes were obtained from Carmona et al. 2019 (https://www.biorxiv.org/content/10.1101/800847v1).
+
+```{r}
+# subset just the CD8 cluster
+cd8 <- subset(b16.combined, idents = "CD8")
+
+# set the clustering identity back to the original sample origin, "orig.ident"
+cd8 <- SetIdent(cd8, value = "orig.ident")
+
+t_cell_genes <- c("Entpd1","Havcr2", "Tigit", "Lag3","Pdcd1", "Batf","Tox","Id2","Ccl3","Prf1", "Fasl", "Gzmb","Gzmk",  "Ifng", "Ccl5","Ly6c2", "Cd69",  "Cxcr3", "Cd44", "Tcf7", "Ccr7", "S1pr1", "Lef1", "Il7r", "Sell")
+
+DotPlot(cd8, features = rev(t_cell_genes), cols = "RdBu", plot.legend = T)+
+  theme(axis.text.x = element_text( angle = 90, vjust = 0.5, hjust = 1))
+TSNEPlot(cd8)
+```
+
+We observe clear heterogeneity between the CD8 T cells isolated from each of the different samples. The genes between Entpd1 and Id2 represent T cell exhaustion genes, between Ccl3 and Cd69 represent T cell activation genes, and between Cxcr3 and Sell represent naive/memory T cell genes. Control_S3 and ADAR_S2 have a greater T cell activation signature compared to the other two samples, with higher levels of Gzmb, Ifng, Ccl5, and Ly6c2 expression. It does not appear that the activation signature correlates with the ADAR KO samples, since both the control and ADAR KO groups have a sample that displays this phenotype.
 
 #### 5. Heatmap
 
+A way to examine a large set of genes on a per-cell basis is by heatmap, using ```DoHeatmap```. Each column of the heatmap represents a single cell, organized by cluster. Each row of the heatmap represents a gene from the marker list you input, which typically is also organized by cluster. We can input the top set of markers from ```FindAllMarkers``` into Seurat's built-in heatmap function, ```DoHeatmap```. This results in a "diagonal" heatmap in which you can view how enriched each cluster-specific set of genes is for each cluster. You can also use this heatmap to visualize how your expression of your own genes of interest are spread across the clusters.
+
+```{r}
+top_b16_markers <- b16.markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_logFC)
+
+DoHeatmap(b16.combined, cells = WhichCells(b16.combined, downsample = 50, seed = 1), features = top_b16_markers$gene, size = 3.5, angle = 15, hjust =0)
+```
+
+We observe that a lot of "cluster-specific" genes from FindAllMarkers are actually expressed at varying levels by multiple cell types. For example, scanning from left to right for Irf8, which was determined to be a cDC1-specific gene, is enriched in both cDC1s as well as in pDCs and Migratory DCs. In contrast, a lot of the genes for pDCs appear to be exclusive to this cell type, in which almost no yellow signal is observed in any bin other than the pDC cluster.
 
 ### Self-made Visualizations
 
