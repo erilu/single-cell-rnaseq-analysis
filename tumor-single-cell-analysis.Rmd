@@ -489,9 +489,26 @@ We observe that a lot of "cluster-specific" genes from FindAllMarkers are actual
 
 #### 1. Cell proportion plot
 
-```{r}
+It is often helpful to determine what proportion of total cells each cell cluster represents. Given a seurat object, the function plot_proportions will plot a bargraph showing the % of total cells for each cluster. It will pull from the active.ident slot.
 
+```{r}
+plot_proportions <- function (seuratobj){
+  proportions <- table(seuratobj@active.ident)/length(seuratobj@active.ident)*100
+  proportions <- as.data.frame(proportions)
+  ggplot(proportions , aes (x = Var1, y = Freq))+
+    geom_bar(stat = "identity", aes(fill = Var1))+
+    theme_classic()+
+    labs (x = NULL, y = "Percent of total cells", title = "Cell abundance by cluster")+
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 12, color = "black"), 
+          axis.text.y = element_text(size = 12, color = "black"),
+          axis.title.y = element_text(size = 12),
+          legend.position = "none")
+}
+
+plot_proportions(b16.combined)
 ```
+
+We observe that the majority of cells are TAMs, followed by monocytes and CD8 T cells.
 
 #### 2. 
 
