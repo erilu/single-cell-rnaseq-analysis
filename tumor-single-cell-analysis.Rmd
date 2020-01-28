@@ -189,23 +189,23 @@ Sifting through this table, we can assign cell types to each of the clusters. Fo
 
 ```{r}
 # res 0.6 cluster labels
-new.cluster.ids <- c("0- C1Q-hi TAM",
+new.cluster.ids <- c("0- TAM 1",
                      "1- Monocyte",
                      "2- CD8 T cell",
-                     "3- Arg1-hi TAM",
+                     "3- TAM 2",
                      "4- Melanocyte",
-                     "5- Folr2-hi TAM",
+                     "5- TAM 3",
                      "6- cDC2",
                      "7- Melanocyte",
                      "8- cDC1",
                      "9- Migratory DC",
                      "10- NK",
-                     "11- MHCII-hi TAM",
+                     "11- TAM 4",
                      "12- Treg",
                      "13- Melanocyte",
                      "14- Fibroblast",
                      "15- pDC",
-                     "16- Hemophagocyte TAM"
+                     "16- TAM 5"
                      )
 
 b16.labeled <- b16
@@ -280,19 +280,19 @@ b16.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
 ```{r}
 
 new.cluster.ids <- c("0- Activated Monocyte",
-                     "1- C1Q-hi TAM",
-                     "2- Arg1-hi TAM",
+                     "1- TAM 1",
+                     "2- TAM 2",
                      "3- CD8 T cell",
-                     "4- Folr2-hi TAM",
+                     "4- TAM 3",
                      "5- cDC2",
                      "6- Classical Monocyte",
                      "7- Treg",
                      "8- cDC1",
                      "9- NK cell",
-                     "10- MHCII-hi TAM",
+                     "10- TAM 4",
                      "11- Migratory DC",
                      "12- pDC",
-                     "13- Hemophagocyte TAM"
+                     "13- TAM 5"
                      )
 b16.labeled <- b16
 names(new.cluster.ids) <- levels(b16.labeled)
@@ -309,11 +309,11 @@ The clusters are by default ordered by cell abundance, which makes looking at so
 # reorder by cell type:
 reordered.new.cluster.ids <- c("0- Activated Monocyte",
                                "6- Classical Monocyte",
-                               "1- C1Q-hi TAM",
-                               "2- Arg1-hi TAM",
-                               "4- Folr2-hi TAM",
-                               "10- MHCII-hi TAM",
-                               "13- Hemophagocyte TAM",
+                               "1- TAM 1",
+                               "2- TAM 2",
+                               "4- TAM 3",
+                               "10- TAM 4",
+                               "13- TAM 5",
                                "8- cDC1",
                                "5- cDC2",
                                "11- Migratory DC",
@@ -510,7 +510,40 @@ plot_proportions(b16.combined)
 
 We observe that the majority of cells are TAMs, followed by monocytes and CD8 T cells.
 
-#### 2. 
+#### 2. UMI / nCount_RNA plot
+
+A good way to QC your data is to check how many total unique molecular identifiers (transcripts) are in each cell, as a proxy for how transcriptionally active the cell is. This is often referred to as "UMI count" or "nCount_RNA". To do this, we can extract the nCount_RNA from the meta.data, and then plot the gradient on top of a t-SNE plot. The function ```umi_plot``` will do this as shown below:
+
+```{r}
+umi_plot <- function (seuratobj) {
+  # extract the t-sne coordinates
+  seuratobj[["tsne1"]] <-  Embeddings(object = seuratobj, reduction = "tsne")[,"tSNE_1"]
+  seuratobj[["tsne2"]] <-  Embeddings(object = seuratobj, reduction = "tsne")[,"tSNE_2"]
+  ggplot(seuratobj@meta.data, aes (x = tsne1, y = tsne2 ))+
+    geom_point(aes(color = log(nCount_RNA)))+
+    scale_color_gradientn(colors = topo.colors(10))+
+    theme_classic()
+}
+
+umi_plot(b16.combined)
+```
+
+We observe that the highest number of transcripts are found in the CD8 T cell cluster and the C1q-high macrophage cluster. If there is a dead cell cluster, usually it will have the lowest number of transcripts. To get a better grasp on a per-cluster basis, we can use dplyr to summarize the average UMI/nCount_RNA grouped by cluster. We can also summarize other items of interest such as the average nFeature, percent.mito, etc, using the function ```summarize_metadata``` below:
+
+```{r}
+summarize_metadata <- function (seuratobject, group.by = "RNA_snn_res.0.6") {
+  seuratobject@meta.data %>% 
+    group_by_at(group.by) %>% 
+    summarise (avg_UMI = mean(nCount_RNA),
+               avg_nFeature = mean(nFeature_RNA),
+               avg_percent.mito = mean(percent.mito),
+               avg_percent.ribo = mean(percent.ribo)) %>%
+    arrange(desc(avg_UMI))
+}
+
+summarize_metadata(b16.combined, group.by = "RNA_snn_res.0.6")
+```
+
 
 
 ### Cosmetic changes
