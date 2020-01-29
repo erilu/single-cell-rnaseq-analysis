@@ -528,7 +528,7 @@ umi_plot <- function (seuratobj) {
 umi_plot(b16.combined)
 ```
 
-We observe that the highest number of transcripts are found in the CD8 T cell cluster and the C1q-high macrophage cluster. If there is a dead cell cluster, usually it will have the lowest number of transcripts. To get a better grasp on a per-cluster basis, we can use dplyr to summarize the average UMI/nCount_RNA grouped by cluster. We can also summarize other items of interest such as the average nFeature, percent.mito, etc, using the function ```summarize_metadata``` below:
+We observe that the highest number of transcripts are found in the CD8 T cell cluster and the macrophage cluster. If there is a dead cell cluster, usually it will have the lowest number of transcripts. To get a better grasp on a per-cluster basis, we can use dplyr to summarize the average UMI/nCount_RNA grouped by cluster. We can also summarize other items of interest such as the average nFeature, percent.mito, etc, using the function ```summarize_metadata``` below:
 
 ```{r}
 summarize_metadata <- function (seuratobject, group.by = "RNA_snn_res.0.6") {
@@ -542,6 +542,25 @@ summarize_metadata <- function (seuratobject, group.by = "RNA_snn_res.0.6") {
 }
 
 summarize_metadata(b16.combined, group.by = "RNA_snn_res.0.6")
+```
+
+#### 3. Signature plots
+
+Although FeaturePlots are useful for determining the expression of a single gene across the single cell dataset, we might be interested in how a gene signature (multiple genes in aggregate) behave. For example, there are many genes that contribute to T cell exhaustion. To do this, we have to make an aggregate metric composed of the expression values of all of the genes in our signature, and then overlay this aggregate metric ontop of the t-SNE plot, using the ```signature_plot``` function below:
+
+```{r}
+signature_genes <- c("Havcr2", "Tigit", "Lag3","Pdcd1","Tox")
+
+signature_plot <- function (seuratobject,signature_genes){
+  sig_data <- as.data.frame(Embeddings(object = seuratobject, reduction = "tsne"))
+  sig_data$signature <- rowMeans(t(seuratobject@assays$RNA@scale.data[signature_genes,]))
+  ggplot(sig_data, aes (tSNE_1, tSNE_2))+
+    geom_point(aes (color = signature))+
+    scale_color_gradientn(colors = topo.colors(10))+
+    theme_classic()
+}
+
+signature_plot(b16.combined, signature_genes)
 ```
 
 
