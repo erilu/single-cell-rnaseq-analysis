@@ -563,6 +563,71 @@ signature_plot <- function (seuratobject,signature_genes){
 signature_plot(b16.combined, signature_genes)
 ```
 
+#### 4. Identify cells by barcode
+
+Sometimes, I want to zoom in on a subcluster of cells and re-cluster them in order to determine what further heterogeneity exists within that cluster. After doing so, I often want to determine where sub-clusters lie in the original t-SNE plot. You can pull out individual cell barcodes by either using the function ```WhichCells```, or by simplying taking the rownames of the meta.data corresponding to the cells you want.
+
+```{r fig.width=4, fig.heigh=3}
+# isolate cd8 from the main object
+cd8 <- subset(b16.combined, idents = "CD8")
+
+# re-cluster only the cd8 T cells
+cd8 <- FindNeighbors(cd8, dims = 1:40)
+cd8 <- FindClusters(cd8, resolution = c(0.2))
+TSNEPlot(cd8, label = T)
+
+# select barcodes from cluster 1, using function WhichCells
+cd8_cluster1_barcodes <- WhichCells(cd8, idents = 1)
+```
+
+```{r fig.width=10, fig.height=5}
+# highlight the cells using cells.highlight
+ta <- TSNEPlot(b16, label = T, cells.highlight = cd8_cluster1_barcodes) + labs(title = "Using cells.highlight")
+
+# or identify the cells manually in the meta.data (better if you need to store this information for future use)
+b16@meta.data$cd8_cluster1 <- ifelse(rownames(b16@meta.data) %in% cd8_cluster1_barcodes, TRUE, FALSE)
+tb <- TSNEPlot(b16,group.by = "cd8_cluster1") + labs(title = "Adding to meta.data \n and using group.by")
+
+CombinePlots(plots = list(ta, tb))
+```
+
+Instead of using the subset function, you can also manually pull out barcodes based on the coordinates of the cells in the t-SNE graph. This is often useful when you are interested in a small population of cells in a specific area of the t-SNE graph that are not separated by the conventional clustering algorithms. Once you have the barcodes, you can even re-assign some of the active.idents to a new cell type, and then find markers that are enriched in these barcodes ```using FindMarkers```. For example, we might be interested in knowing what the few cells in the top right-hand corner are.
+
+```{r}
+b16[["tsne1"]] <-  Embeddings(object = b16, reduction = "tsne")[,"tSNE_1"]
+b16[["tsne2"]] <-  Embeddings(object = b16, reduction = "tsne")[,"tSNE_2"]
+
+top_right_barcodes <- rownames(b16@meta.data)[which(b16@meta.data$tsne1 > 25 & b16@meta.data$tsne2 > 25)]
+top_right_barcodes
+
+TSNEPlot(b16, cells.highlight = top_right)
+
+```
+
+After pulling out the barcodes, we observe that this small island is madde up of 13 cells. We can assign these 13 cells a new "ident" within active.ident, and then find the markers that define this small cluster of cells:
+
+```{r}
+# add these barcodes to the active.ident as a new cluster called unknown
+levels(b16.combined@active.ident) <- c(levels(b16.combined@active.ident), "unknown")
+b16.combined@active.ident[top_right] <- "unknown"
+
+# now, this new cluster shows up in our seurat functions
+table(b16.combined@active.ident)
+TSNEPlot(b16.combined, label = T)
+
+unknown_markers <- FindMarkers(b16.combined, "unknown")
+#save(unknown_markers, file = "unknown_cluster_markers.Robj")
+```
+
+```{r include=F}
+load("unknown_cluster_markers.Robj")
+```
+
+```{r}
+unknown_markers[order(unknown_markers$avg_logFC, decreasing = T)[1:30],]
+```
+
+Based on the FindMarkers result, the 13 cells that make up the unknown cluster look like a non-immune stromal cell type. Perhaps these cells were not captured with other stromal cell types when we first filtered those clusters out, or they could be a small population of doublets.
 
 
 ### Cosmetic changes
