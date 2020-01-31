@@ -629,6 +629,24 @@ unknown_markers[order(unknown_markers$avg_logFC, decreasing = T)[1:30],]
 
 Based on the FindMarkers result, the 13 cells that make up the unknown cluster look like a non-immune stromal cell type. Perhaps these cells were not captured with other stromal cell types when we first filtered those clusters out, or they could be a small population of doublets.
 
+#### 5. Proportion of positive cells by cluster
 
-### Cosmetic changes
+Sometimes, it's useful to know how many cells express a given gene at any level (any expression value greater than 0). This finds the proportion of cells within specified clusters that are positive for a given marker. It does so using a simple ifelse statement.
+
+```{r warning=F}
+percent_positive <- function(seuratobj, marker, idents = "all"){
+  seuratobj@meta.data$markerpos <- ifelse(seuratobj@assays$RNA@data[marker,] > 0, 1, 0)
+  seuratobj@meta.data$active.ident <- as.character(seuratobj@active.ident)
+  if (idents != "all")
+    seuratobj@meta.data$active.ident[!(seuratobj@meta.data$active.ident %in% idents)] <- "OTHER"
+  summary_data <- seuratobj@meta.data %>% 
+    group_by(active.ident) %>% 
+    summarize (proportion_cd45 = n()/nrow(seuratobj@meta.data)*100,
+               proportion_markerpos = mean(markerpos)*100)
+  summary_data
+}
+
+percent_positive(b16.combined, "Ccr2")
+percent_positive(b16.combined, "Ccr2", c("pDC", "CD8", "Monocyte"))
+```
 
