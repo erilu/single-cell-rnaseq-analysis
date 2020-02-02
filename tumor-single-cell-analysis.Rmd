@@ -650,3 +650,44 @@ percent_positive(b16.combined, "Ccr2")
 percent_positive(b16.combined, "Ccr2", c("pDC", "CD8", "Monocyte"))
 ```
 
+As expected, we observe that the highest proportion of Ccr2+ cells are observed in the Monocyte cluster. If we want to focus specifically on one or two clusters, we can specify them as an argument and the other cell types will be lumped as an "OTHER" category:
+
+```{r}
+percent_positive(b16.combined, "Ccr2", c("pDC", "CD8", "Monocyte"))
+```
+
+#### 6. Median split t-SNE plot and proportion plot
+
+Even within a cell type, there is often a range of expression of certain genes, from high to low. For example, CD8 T cells may express high to low levels of exhaustion markers such as PD1 (gene name Pdcd1). They all still qualify as CD8 T cells, but the PD1-high cells may behave different from PD1-low cells. This distinction can be important, and so we should have a way to analytically identify the cells that are high or low for a given gene. To do this, we can calculate the median gene expression and categorize each cell using an ifelse() statement. The function ```tsne_median_split``` below will identify and plot the high vs low expressors for a given gene.
+
+```{r}
+cd8 <- subset(b16.combined, idents = "CD8")
+
+median_split <- function (seuratobj, gene, method = "plot") {
+  gene_expression <- seuratobj@assays$RNA@data[gene,]
+  median_split <- factor (ifelse(gene_expression>=median(gene_expression), str_c(gene,"-high"), str_c(gene,"-low")))
+  split_name <- str_c(gene, ".split")
+  seuratobj[[split_name]] <- median_split
+  if (method == "plot") {
+    DimPlot(seuratobj, group.by = split_name, reduction = "tsne")
+  } else if (method == "differential genes") {
+    seuratobj <- SetIdent(seuratobj, value = split_name)
+    de_results <- FindMarkers(seuratobj, str_c(gene,"-high"), str_c(gene,"-low"), min.pct = 0.25, logfc.threshold = 0.25)
+    de_results <- de_results[ order(de_results$avg_logFC, decreasing = T),]
+    # write.csv(de_results, file = paste0(gene, "_high_vs_low_de_results.csv"))
+    de_results
+  } else
+    print("invalid method choice")
+}
+
+median_split(cd8, "Pdcd1")
+```
+
+We can also pull out the PD1-high vs low barcodes and perform differential gene expression analysis on them to figure out what other differences are present between the high and low PD1 expressors.
+
+```{r}
+cd8_pd1_de_genes <- median_split(cd8, "Pdcd1", "differential genes")
+head(cd8_pd1_de_genes)
+```
+
+As expected, we observe that Pdcd1 shows up as a differentially expressed gene that is higher in the PD1-high group. We also observe that other markers of exhaustion such as Lag3 show up as enriched in these cells.
