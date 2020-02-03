@@ -691,3 +691,56 @@ head(cd8_pd1_de_genes)
 ```
 
 As expected, we observe that Pdcd1 shows up as a differentially expressed gene that is higher in the PD1-high group. We also observe that other markers of exhaustion such as Lag3 show up as enriched in these cells.
+
+### Group-wise analysis
+
+#### 1. Group-wise cell proportion plot
+
+There are different total cell numbers coming from each original sample (e.g. ADAR_S1 has 1590 total cells, while Control_S3 has 1674, etc.) Thus, if we want to compare cell composition across samples, we have to normalize for cell count. To do this, we first group by sample, then dividing the number of cells each of that sample's clusters by the total cells in that sample. The function ```get_group_proportions``` below performs that action, returning the proportion of cells that each cluster represents for each group.
+
+```{r}
+get_group_proportions <- function (seuratobj, group.by = "active.ident") {
+  if (group.by == "active.ident") {
+    seuratobj[["active.ident"]] <- seuratobj@active.ident
+  }
+  # gets the total number of cells within each group
+  total_populations <- seuratobj@meta.data %>% group_by(orig.ident) %>% summarize (total.pop = n())
+  # gets the proportion of cells for each cell type within a group by dividing by the total
+  count_populations <- seuratobj@meta.data %>% group_by_at(vars(group.by, "orig.ident")) %>% summarize (n = n())
+  count_populations <- left_join(count_populations, total_populations, by = "orig.ident")
+  count_populations <- count_populations %>% mutate (proportion = n/total.pop)
+  count_populations
+}
+
+get_group_proportions(b16.combined)
+```
+
+We can visualize this information by plotting either a side-by-side barplot or a stacked barplot, using the function ```plot_group_proportions``` below:
+
+```{r}
+plot_group_proportions <- function (seuratobj, graph.type = "dodge") {
+  # get the proportions using get_group_proportions()
+  count_populations <- get_group_proportions(seuratobj)
+  # plot the proportions
+  if (graph.type == "dodge"){
+  ggplot(count_populations, aes (x = active.ident, y = proportion))+
+    geom_bar (aes(fill = orig.ident), stat = "identity", position = "dodge")+
+      theme(axis.text.x = element_text(angle=45, hjust = 1))
+  } else if (graph.type == "stacked") {
+  ggplot(count_populations, aes (x = orig.ident, y = proportion))+
+    geom_bar (aes(fill = active.ident), stat = "identity", position = "fill")
+  }
+  else
+    print("invalid graph type")
+}
+
+plot_group_proportions(b16.combined, graph.type = "dodge")
+plot_group_proportions(b16.combined, graph.type = "stacked")
+```
+
+Interestingly, we observe lower amounts of TAMs in the ADAR1 KO samples compared to the control samples, and higher amounts of monocytes and CD8 T cells.
+
+#### 3. Median expression bar graphs split by group
+
+
+
