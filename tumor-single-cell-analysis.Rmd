@@ -740,7 +740,59 @@ plot_group_proportions(b16.combined, graph.type = "stacked")
 
 Interestingly, we observe lower amounts of TAMs in the ADAR1 KO samples compared to the control samples, and higher amounts of monocytes and CD8 T cells.
 
+#### 2. Plot heatmap to cluster samples or cell types
+
+Now that we have defined the cell composition by sample, we can perform some correlative analysis between samples in order to determine how similar the cell composition of each sample is to one another. This can be achieved by simply using the ```cor()``` function and plotting a heatmap using ```pheatmap```. We can also visualize which sample has the most of any given cell type by plotting the raw values on the heatmap and scaling by the cell type column.
+
+```{r}
+plot_heatmap_proportions <- function (seuratobj, graph.type = "by.cell") {
+  count_populations <- get_group_proportions(seuratobj)
+  reformatted <- count_populations %>% reshape2::dcast(formula = orig.ident~active.ident, value.var = "proportion")
+  heatmap_matrix <- as.matrix(reformatted[,-1])
+  rownames(heatmap_matrix) <- reformatted[,1]
+  if (graph.type == "by.cell") {
+    pheatmap::pheatmap(heatmap_matrix, scale = "column")
+  } else if (graph.type == "by.sample") {
+    pheatmap::pheatmap(cor(t(heatmap_matrix)))
+  }
+  else
+    print("invalid graph type")
+}
+
+plot_heatmap_proportions(b16.combined, graph.type = "by.sample")
+```
+
+The "by.sample" heatmap surprisingly shows that ADAR_S1 and Control_S3 are more similar to each other than the other samples! One would have expected that the two ADAR1 KO samples would cluster together. Looking at the proportion plot from the previous section, the proportion values indeed look very similar across cell types between ADAR_S1 and Control_S3.
+
+```{r}
+plot_heatmap_proportions(b16.combined, graph.type = "by.cell")
+```
+
+The "by.cell" version of the heatmap allows you to see which samples have the most of any given cell type. For example, Control_S4 appears to have by far more TAMs than other samples, and Control_S3 appears to have the highest proportion of cDC1s.
+
 #### 3. Median expression bar graphs split by group
 
+```{r}
+proportions_median_split <- function (seuratobj, gene) {
+  # assigns the high or low expression based on median split to the meta.data
+  gene_expression <- seuratobj@assays$RNA@data[gene,]
+  median_split <- factor (ifelse(gene_expression>=median(gene_expression), str_c(gene,"-high"), str_c(gene,"-low")))
+  split_name <- str_c(gene, ".split")
+  seuratobj[[split_name]] <- median_split
+  
+  # counts the number of high or low expression cells across samples using get_group_proportions()
+  count_populations <- get_group_proportions(seuratobj, group.by = split_name)
+  count_populations
+  
+  # plots the proportions split by group for high vs low expressors
+  count_populations %>%
+    ggplot(aes_string(x = "orig.ident", y = "proportion"))+
+      geom_bar(stat = "identity", aes_string(fill = split_name), position = "dodge")+
+    theme(axis.text.x = element_text( size = 10), axis.text.y = element_text(size = 10))+
+    labs(x = "", y = "Proportion within group")
+}
 
+proportions_median_split(cd8, "Pdcd1")
+```
 
+We observe that there are higher propoortions of PD1-low cells in the ADAR1 KO samples compared to the control samples. This is in accord with the activation/exhaustion DotPlot, which also showed that this gene was enriched in the ADAR1 KO samples.
