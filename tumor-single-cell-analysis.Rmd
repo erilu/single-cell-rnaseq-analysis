@@ -796,3 +796,68 @@ proportions_median_split(cd8, "Pdcd1")
 ```
 
 We observe that there are higher propoortions of PD1-low cells in the ADAR1 KO samples compared to the control samples. This is in accord with the activation/exhaustion DotPlot, which also showed that this gene was enriched in the ADAR1 KO samples.
+
+#### 4. Differential gene expression analysis between groups
+
+We can use the FindMarkers function in Seurat to find the most differential genes between two groups. Previously, we were looking at cell-type specific markers. Here, we first subset out the cell type of interest, then set the active.ident to the ADAR1 KO or Control groups. The "markers" returned by the FindMarkers function, comparing the ADAR1 KO and Control groups, will essentially provide a list of the differentially expressed genes between the two groups. We can loop through the different cell types that we want to perform this analysis on using ```get_DE_genes`` below:
+
+```{r eval=F}
+de_groups <- c("CD8", "Monocyte")
+
+get_DE_genes <- function (seuratobj, de_groups) {
+  # divide cells into either "ADAR" or "Control"
+  seuratobj[["group"]] <-  str_split_fixed(seuratobj@meta.data$orig.ident,"_", 2)[,1]
+  
+  # loop through each of the groups you want DE for
+  for (item in de_groups) {
+    de_subset <- subset(seuratobj, idents = item)
+    de_subset <- SetIdent(de_subset, value = "group")
+    de_results <- FindMarkers(de_subset, "ADAR", "Control", min.pct = 0.25, logfc.threshold = 0.25)
+    write.csv(de_results[ order(de_results$avg_logFC, decreasing = T),], file = paste0(item, "_ADAR_vs_Control_DE.csv"))
+  }
+}
+
+get_DE_genes(b16.combined,de_groups)
+```
+
+```{r}
+cd8_de <- read.csv("CD8_ADAR_vs_Control_DE.csv", header = T, row.names = 1)
+head(cd8_de)
+```
+
+We find that the ADAR1 KO CD8 T cells have upregulated interferon response genes such as Isg15, among others. It will be interesting to research what these genes may mean in the context of tumor immunology.
+
+#### 5. Gene Set Enrichment Analysis (GSEA) across groups
+
+Gene Set Enrichment Analysis is a very useful tool to assess whether pathways consisting of a collection of several genes are enriched in one group compared to another. First, we need to rank all the genes available by their enrichment in the ADAR1 KO samples vs the Control samples (i.e. for every gene, quantify how much higher or lower it is in group A vs group B). Then, we plug this list of genes into either the GSEA application from the Broad Institute (https://www.gsea-msigdb.org/gsea/index.jsp), or into the R package ```fgsea``` from Bioconductor (https://bioconductor.org/packages/release/bioc/html/fgsea.html). Below is some code that will generate rank files that can be used in either application.
+
+```{r eval=F}
+# divide cells into either "ADAR" or "Control"
+b16.combined[["group"]] <-  str_split_fixed(b16.combined@meta.data$orig.ident,"_", 2)[,1]
+
+# isolate group of interest, in this case CD8 cells
+cd8 <- subset(b16.combined, idents = "CD8")
+cd8 <- SetIdent(cd8, value = "group")
+
+# use FindMarkers with min.pct = 0.1, and no logfc threshold to rank all the genes available
+cd8_ranked_list <- FindMarkers(cd8, "ADAR", "Control", min.pct = 0.1, logfc.threshold = 0)
+
+# order list, pull out gene name and log2fc, and convert genes to uppercase
+cd8_ranked_list <- cd8_ranked_list[order(cd8_ranked_list$avg_logFC, decreasing = T),]
+cd8_ranked_list$Gene.name <- str_to_upper(rownames(cd8_ranked_list))
+cd8_ranked_list <- cd8_ranked_list[,c("Gene.name", "avg_logFC")]
+rownames(cd8_ranked_list) <- NULL
+
+# write to table if want to save for GSEA application
+# save(cd8_ranked_list, file = "CD8_ADAR_vs_Control_ranked.Robj")
+# write.table(cd8_ranked_list, file = "CD8_ADAR_vs_Control_ranked.rnk", sep = "\t", row.names = F, quote = F)
+```
+
+```{r include=F}
+load("CD8_ADAR_vs_Control_ranked.Robj")
+```
+
+```{r}
+head(cd8_ranked_list)
+```
+
