@@ -861,3 +861,79 @@ load("CD8_ADAR_vs_Control_ranked.Robj")
 head(cd8_ranked_list)
 ```
 
+Now that we have the ranked list, we can plug it into the GSEA application or into the fgsea package. Below, I will show you how to use the fgsea package. First, we have to download the pathway files from the GSEA MSigDB webpage at: https://www.gsea-msigdb.org/gsea/msigdb/collections.jsp and load them in using ```fgsea::gmtPathways```. A commonly-used set of pathways is the HALLMARK pathway set, which I will use below.
+
+```{r}
+library(fgsea)
+# read in file containing lists of genes for each pathway
+hallmark_pathway <- gmtPathways("pathway_files/h.all.v7.0.symbols.gmt.txt")
+head(names(hallmark_pathway))
+```
+
+Then, we have to turn our ranked list into a vector in which the avg_logFC is named with the gene name, as well as get rid of any NA values or duplicate gene entries.
+
+```{r}
+# formats the ranked list for the fgsea() function
+prepare_ranked_list <- function(ranked_list) { 
+  # if duplicate gene names present, average the values
+  if( sum(duplicated(ranked_list$Gene.name)) > 0) {
+    ranked_list <- aggregate(.~Gene.name, FUN = mean, data = ranked_list)
+    ranked_list <- ranked_list[order(ranked_list$avg_logFC, decreasing = T),]
+  }
+  # omit rows with NA values
+  ranked_list <- na.omit(ranked_list)
+  # turn the dataframe into a named vector
+  ranked_list <- tibble::deframe(ranked_list)
+  ranked_list
+}
+
+cd8_ranked_list <- prepare_ranked_list(cd8_ranked_list)
+head(cd8_ranked_list)
+```
+
+Now that we have a cleaned-up and named vector, we can plug it into the fgsea() function along with the hallmark pathway object, which generates a table of results containing the enrichment scores associated with each pathway:
+
+```{r}
+# generate GSEA result table using fgsea() by inputting the pathway list and ranked list
+fgsea_results <- fgsea(pathways = hallmark_pathway,
+                  stats = cd8_ranked_list,
+                  minSize = 15,
+                  maxSize = 500,
+                  nperm= 1000)
+
+fgsea_results %>% arrange (desc(NES))
+```
+
+The enrichment scores (ES) and normalized enrichment scores (NES) tell us how much more the collection of genes in that pathway are expressed in the ADAR1 KO samples vs the Control samples. In this case, we observe that the most enriched pathway in the ADAR1 KO group is the interferon gamma response pathway.
+
+We can plot enrichment curves for individual pathways using the built-in ```plotEnrichment``` function, which I've written a small wrapper for below. In these plots, the black ticks on the x-axis indicate a gene in the pathway, and the green curve is a measure of how enriched the genes are for either the ADAR1 KO group (left side) or the Control group (right side). An example of the interferon gamma response pathway is below, along with the IL2 STAT5 signaling pathway, which is highly enriched in the opposite direction towards the control samples.
+
+```{r}
+plot_enrichment <- function (geneset, pathway, ranked_list) {
+  plotEnrichment(geneset[[pathway]], ranked_list)+labs (title = pathway)
+}
+
+# example of pathway highly enriched in ADAR
+plot_enrichment(hallmark_pathway, "HALLMARK_INTERFERON_GAMMA_RESPONSE" , cd8_ranked_list)
+# example of pathway enriched in Control
+plot_enrichment(hallmark_pathway,"HALLMARK_IL2_STAT5_SIGNALING", cd8_ranked_list)
+```
+
+The fsgea_results table above is useful, but it would be nicer to view in a more graphical format. Below, we can construct a "waterfall" plot, which is basically a sideways bar plot of enrichment scores for each of the pathways. The significantly enriched pathways are highlighted in a different color.
+
+```{r}
+waterfall_plot <- function (fsgea_results, graph_title) {
+  fgsea_results %>% 
+    mutate(short_name = str_split_fixed(pathway, "_",2)[,2])%>%
+    ggplot( aes(reorder(short_name,NES), NES)) +
+      geom_bar(stat= "identity", aes(fill = padj<0.05))+
+      coord_flip()+
+      labs(x = "Hallmark Pathway", y = "Normalized Enrichment Score", title = graph_title)+
+      theme(axis.text.y = element_text(size = 7), 
+            plot.title = element_text(hjust = 1))
+}
+
+waterfall_plot(fgsea_results, "Pathways enriched in ADAR1 KO vs Control CD8 T cells")
+```
+
+Using this visualization, we can quickly point out the significantly enriched pathways. It is interesting to note that both interferon response pathways as well as both myc targets pathways are present in the top fraction.
