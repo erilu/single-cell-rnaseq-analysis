@@ -1,3 +1,4 @@
+*.html
 *.nb.html
 /test_output
 /data
