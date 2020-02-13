@@ -1,18 +1,21 @@
 ---
-title: "Single cell RNAseq analysis of B16 tumor infiltrating immune cells"
+title: "Single-cell RNAseq analysis of B16 tumor infiltrating immune cells"
+author: Erick Lu
+date: February 3, 2020
 output:
   html_document:
     toc: true
     toc_float: true
+    df_print: paged
 ---
 
 ## Introduction
 
-Here, I provide a step by step analysis of the publicly available single cell RNA-sequencing dataset from Ishizuka et al. 2019, using the R package ```Seurat```. This single cell RNA-sequencing dataset was generated using the 10X Genomics platform, and was derived from tumor-infiltrating leukocytes isolated from mouse B16 tumors.
+Here, I provide a step by step analysis of the publicly available single cell RNA-sequencing dataset from Ishizuka et al. 2019, using the R package `Seurat`. This single cell RNA-sequencing dataset was generated using the 10X Genomics platform, and was derived from tumor-infiltrating leukocytes isolated from mouse B16 tumors.
 
 The publication can be found at: https://www.ncbi.nlm.nih.gov/pubmed/30559380. The data can be downloaded from: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE110746. This data consists of a set of matrices which dictate the cellular barcode, gene name, and expression values for each cell (barcodes.tsv.gz, genes.tsv.gz, and matrix.mtx.gz). These matricies are the standardized output provided by the 10X Genomics software Cell Ranger after processing the raw fastq files.
 
-This analysis is meant to serve as an example of how to analyze single cell RNA-sequencing data generated using the 10X Genomics platform using the R package ```Seurat```. I provide details for each step so that researchers with only basic knowledge of R will be able to analyze a single cell RNA-seq experiment. I hope that this will help researchers who are planning to perform their own single-cell RNA-sequencing experiment have an easier time making sense of their data.
+This analysis is meant to serve as an example of how to analyze single cell RNA-sequencing data generated using the 10X Genomics platform using the R package `Seurat`. I provide details for each step so that researchers with only basic knowledge of R will be able to analyze a single cell RNA-seq experiment. I hope that this will help researchers who are planning to perform their own single-cell RNA-sequencing experiment have an easier time making sense of their data.
 
 ---
 
@@ -22,35 +25,36 @@ This analysis is meant to serve as an example of how to analyze single cell RNA-
 library(Seurat)
 library(tidyverse)
 library(future)
-options(future.globals.maxSize= 6815744000)
 ```
 
-This analysis was performed using ```Seurat``` version 3.0.2. I also use the ```future``` package in order to speed things up, as some of the processing steps take a long time. The ```tidyverse``` package provides a nice set of tools for both data wrangling and visualization.
+This analysis was performed using `Seurat` version 3.0.2. I also use the `future` package to enable multicore processing to speed things up, since some of the processing steps take a long time. The `tidyverse` package provides a nice set of tools for both data wrangling and visualization.
 
-## Read in the data and create the Seurat object
+## Create the Seurat object
 
-The ```Read10X``` function is used to read in the data matricies. If you run into issues with this step, check whether your files are named correctly. For this analysis, I had to remove the GSE identifier (e.g. change GSE110746_barcodes.tsv to barcodes.tsv, and so on). I placed the three data files into a directory named "haining", and specified this directory for the data.dir parameter. If you are getting data from a Cell Ranger pipeline, you can find them in the outs/filtered_feature_bc_matrix folder.
+The `Read10X()` function is used to read in the data matricies. If you run into issues with this step, check whether your files are named correctly. For this analysis, I had to remove the GSE identifier (e.g. change GSE110746_barcodes.tsv to barcodes.tsv, and so on). I placed the three data files into a directory named "haining", and specified this directory for the data.dir parameter. If you are getting data from a Cell Ranger pipeline, you can find them in the outs/filtered_feature_bc_matrix folder.
 
 ```{r}
 # Read in data
 raw_data <- Read10X(data.dir = "haining")
 ```
 
-Once the raw data is read in, you can create a Seurat object using ```CreateSeuratObject```.
+Once the raw data is read in, you can create a Seurat object using the function `CreateSeuratObject()`.
 
 ```{r}
 b16 <- CreateSeuratObject(counts = raw_data, min.cells = 3, min.features = 200, project = "b16", names.delim = "-", names.field = 2)
 ```
 
-If your data was produced from a single sample, you won't have to use the names.delim or names.field parameters. In this case, the immune infiltrate from 2 ADAR1 KO tumors and 2 control tumors (4 10X samples total) were aggregated using Cell Ranger aggr, resulting in the barcodes having the identifiers that look like: AAACCTGTCACATGCA-ADAR_S1. We can pull out the original identifier of "ADAR_S1" by specifying ```names.delim = "-"``` and ```names.field = 2```.
+The `min.cells` parameter lets you filter features (genes) by those expressed in only at least the specified number of cells, and the `min.features` parameter lets you filter your cells based on those that express at least the specified number of features. Typically the default is to use `min.cells = 3` and `min.features = 200`, but this may vary depending on the types of cells you are studying.
 
-We can see if this worked correctly by examining the meta.data portion of the Seurat object below, seeing if sample names such as "ADAR_S1" show up in the ```orig.ident``` column. Here, a cell is represented by its barcode value, and its attributes can be found as a rowname in ```b16@meta.data```. You can find the raw expression value for each gene in the transcriptome as a column in ```b16@assays$RNA@data```.
+If your data was produced from a single sample, you won't have to use the names.delim or names.field parameters. In this case, the immune infiltrate from 2 ADAR1 KO tumors and 2 control tumors (4 10X samples total) were aggregated using Cell Ranger aggr, resulting in the barcodes having the identifiers that look like: AAACCTGTCACATGCA-ADAR_S1. We can pull out the original identifier of "ADAR_S1" by specifying `names.delim = "-"` and `names.field = 2`.
+
+We can see if this worked correctly by examining the `@meta.data` portion of the Seurat object below, seeing if sample names such as "ADAR_S1" show up in the `orig.ident` column. Here, a cell is represented by its barcode value, and its attributes can be found as a rowname in `b16@meta.data`. You can find the raw expression value for each gene in the transcriptome as a column in `b16@assays$RNA@data`.
 
 ```{r}
 head(b16@meta.data)
 ```
 
-A quick glance at the unique values in ```orig.ident``` shows the 4 biological samples that were aggregated:
+A quick glance at the unique values in `orig.ident` shows the 4 biological samples that were aggregated:
 
 ```{r}
 unique(b16@meta.data$orig.ident)
@@ -64,9 +68,9 @@ b16
 
 Each gene is considered a "feature", and each cell is considered a "sample".
 
-## Measure mitochondrial and ribosomal content and filter cells
+## Filter cells
 
-We can add columns to the meta.data by using ```[[ ]]```. Below, we use regexes to pull out mitochondrial or ribosomal genes, and then assign the proportion of transcripts they represent for each cell using the PercentageFeatureSet function. It's always a good idea to first check that your regex is pulling out the right genes:
+We can add columns to the `@meta.data` section by using `[[ ]]`. Below, we use regexes to pull out mitochondrial or ribosomal genes, and then assign the proportion of transcripts they represent for each cell using the `PercentageFeatureSet()` function. It's always a good idea to first check that your regex is pulling out the right genes.
 
 ```{r eval=F}
 # check whether you are getting the genes you want
@@ -74,16 +78,16 @@ grep("^mt-", rownames(b16@assays$RNA@data), value = T)
 grep("Rps|Rpl|Mrpl|Mrps", rownames(b16@assays$RNA@data), value = T)
 ```
 
-```{r}
+```{r percent-mito-ribo-nfeature-graphs, fig.width=10, fig.height=3}
 # add the percentage of these mitochondrial or ribosomal genes to the meta.data
 b16[["percent.mito"]] <- PercentageFeatureSet(object = b16, pattern = "^mt-")
 b16[["percent.ribo"]] <- PercentageFeatureSet(object = b16, pattern = "Rps|Rpl|Mrpl|Mrps")
 
-plot1 <- FeatureScatter(object = b16, feature1 = "nCount_RNA", feature2 = "percent.mito")
-plot2 <- FeatureScatter(object = b16, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
-plot3 <- FeatureScatter(object = b16, feature1 = "nCount_RNA", feature2 = "percent.ribo")
+plot1 <- FeatureScatter(object = b16, feature1 = "nCount_RNA", feature2 = "percent.mito")+theme(axis.text.x = element_text(angle = 45, hjust = 1))
+plot2 <- FeatureScatter(object = b16, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")+theme(axis.text.x = element_text(angle = 45, hjust = 1))
+plot3 <- FeatureScatter(object = b16, feature1 = "nCount_RNA", feature2 = "percent.ribo")+theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-CombinePlots(plots = list(plot1, plot2, plot3))
+CombinePlots(plots = list(plot1, plot2, plot3), ncol = 3)
 ```
 
 We observe that there are some cells in each treatment condition that have high levels of mitochondrial and ribosomal gene expression. We choose to filter out these cells, because they are likely to be dead or dying.
@@ -100,15 +104,15 @@ b16
 
 We observe that there are 8755 cells remaining, down from the original 8834.
 
-## Data normalization and cell clustering
+## Data normalization and clustering
 
-Now that we have created the Seurat object and performed some initial filtering of dead cells, we can move onto data normalization, clustering, and cell identification. These are all performed using built-in functions within the Seurat R package, which are executed sequentially to process the object. Seurat objects are large and consume a lot of memory, so usually I continue to overwrite the same object at each step. The ```ScaleData``` function typically takes a lot of computing power and a long time to run, so here I use the future package to speed things up with multi-core processing. Essentially, these steps log-transform the expression values and scale each cell based its total read count (UMI) and mitochondrial / ribosomal percentage.
+Now that we have created the Seurat object and performed some initial filtering of dead cells, we can move onto data normalization, clustering, and cell identification. These are all performed using the built-in functions `NormalizeData()`, `FindVariableFeatures()`, and `ScaleData()` within the Seurat R package, which are executed sequentially to process the object. Seurat objects are large and consume a lot of memory, so usually I continue to overwrite the same object at each step. The `ScaleData()` function typically takes a lot of computing power and a long time to run, so here I use the future package to speed things up with multicore processing. Essentially, these steps log-transform the expression values and scale each cell based its total read count (UMI) and mitochondrial / ribosomal percentage.
 
 ```{r eval=F}
 b16 <- NormalizeData(b16, normalization.method = "LogNormalize", scale.factor = 10000)
 b16 <- FindVariableFeatures(b16, selection.method = "vst", nfeatures = 2000)
 all.genes <- rownames(b16)
-plan("multiprocess", workers = 10)
+plan("multiprocess", workers = 4)
 b16 <- ScaleData(b16, features = all.genes, vars.to.regress = c("nCount_RNA", "percent.mito", "percent.ribo"))
 plan("multiprocess", workers = 1)
 ```
@@ -118,14 +122,17 @@ plan("multiprocess", workers = 1)
 load("b16_all_v3.Robj")
 ```
 
-Once the values have been normalized and scaled, we can begin to cluster each cell based on their gene expression patterns. Our goal is that cells that express similar patterns of genes (high gene "X", low gene "Y", etc.) will cluster together. To do this, we use the ```RunPCA``` function.
+Once the values have been normalized and scaled, we can begin to cluster each cell based on their gene expression patterns. Our goal is that cells that express similar patterns of genes (high gene "X", low gene "Y", etc.) will cluster together. To do this, we use the `RunPCA()` function.
 
 ```{r}
 b16 <- RunPCA (b16, features = VariableFeatures(object = b16), ndims.print = 1:2)
-ElbowPlot(object = b16, ndims = 50)
 ```
 
-We have the liberty of determining the number of PCs to choose for downstream clustering functions. Seurat uses graph-based cluster identification, and a common way of visualizing the clustering pattern is through t-distributed stochastic neighbor embedding (tSNE). Both of these steps require us to imput the number of PCs to use.
+The output above shows the genes that drive the variation for each of the principal components. We have the liberty of determining the number of PCs to choose for downstream clustering functions. Seurat uses graph-based cluster identification, and a common way of visualizing the clustering pattern is through t-distributed stochastic neighbor embedding (t-SNE). Both of these steps require us to input the number of PCs to use. To decide this number, we typically look at a scree plot:
+
+```{r scree-plot, fig.width=5, fig.height=3}
+ElbowPlot(object = b16, ndims = 50)
+```
 
 Here, I visually inspect the scree plot to determine how many PCs to choose, usually selecting a number at which the standard deviation "flattens" out, after which adding more PCs only mimimally reduces standard deviation. Here, I will choose 40 PCs. A more systematic way of choosing the PCs can be implemented, but from my experience, choosing PCs within 10% of this range has not impacted cluster identification. After choosing the number of PCs to use, we can run the clustering functions below:
 
@@ -143,37 +150,41 @@ b16 <- RunTSNE(b16, dims = 1:40)
 # save(b16, file = "b16_all_v3.Robj")
 ```
 
-The resolution parameter for the ```FindClusters``` function is what you have to pay the most attention to. A higher resolution value will result in a larger number of clusters being identified, and vice versa. It dictates how over- or under- clustered your cells will be. Often times, you will have to try a bunch of different resolution values, examine how your cells cluster in each scenario, and determine which makes the most biological sense. You should ask yourself questions such as: do I observe cell clusters that are biologically distinct being aggregated with each other (e.g. NK cells and T cells being combined in the same cluster)? If so, your resolution is too low and should be higher. In contrast, if you observe multiple clusters of what appears to be the same cell type, you might have chosen too high of a resolution. That being said, single cell RNA-sequencing is great at detecting novel sub-populations of cells and revealing heterogeneity within what we previously may have thought to have been a single cell type. It is important to invest time into determining whether you are observing true biological heterogeneity vs. an artefact of choosing too high of a resolution. In my opinion, it is safer to choose a lower resolution to begin with, and then sub-cluster individual clusters of interest to determine whether there is any further heterogeneity that is biologically relevant. I will show an example of this later on in the analysis.
+The resolution parameter for the `FindClusters()` function is what you have to pay the most attention to. A higher resolution value will result in a larger number of clusters being identified, and vice versa. It dictates how over- or under- clustered your cells will be. Often times, you will have to try a bunch of different resolution values, examine how your cells cluster in each scenario, and determine which makes the most biological sense. You should ask yourself questions such as: do I observe cell clusters that are biologically distinct being aggregated with each other (e.g. NK cells and T cells being combined in the same cluster)? If so, your resolution is too low and should be higher. In contrast, if you observe multiple clusters of what appears to be the same cell type, you might have chosen too high of a resolution.
 
-Here, we pass a vector of resolution values ranging from 0.2 to 0.6 to ```FindClusters```. We observe that the cluster attributions are defined as columns in ```b16@meta.data```. The field ```b16@active.ident``` houses the cluster definitions for the "right-most" resolution of 0.6.
+That being said, single cell RNA-sequencing is great at detecting novel sub-populations of cells and revealing heterogeneity within what we previously may have thought to have been a single cell type. It is important to invest time into determining whether you are observing true biological heterogeneity vs. an artefact of choosing too high of a resolution. In my opinion, it is safer to choose a lower resolution to begin with, and then sub-cluster individual clusters of interest to determine whether there is any further heterogeneity that is biologically relevant. I will show an example of this later on in the analysis.
+
+Here, we pass a vector of resolution values ranging from 0.2 to 0.6 to `FindClusters()`. We observe that the cluster attributions are defined as columns in `b16@meta.data` below. The field `b16@active.ident` houses the cluster definitions for the "right-most" resolution of 0.6.
 
 ```{r}
 head(b16@meta.data)
 ```
 
-Now that clusters have been assigned, we can visualize the clustering patterns using the built-in Seurat function, ```DimPlot```, using the t-SNE dimentionality reduction option. The visualization functions within Seurat will utilize the clustering information from ```active.ident``` by default, unless the ```group.by``` parameter is specified. Below, I plot the t-SNE plot for each resolution. You can also swap the active.ident with any of the columns in the meta.data using the function SetIdent.
+Now that clusters have been assigned, we can visualize the clustering patterns using the built-in Seurat function, `DimPlot()`, using the t-SNE dimensionality reduction option. The visualization functions within Seurat will utilize the clustering information from `active.ident` by default, unless the `group.by` parameter is specified. Below, I plot the t-SNE plot for each resolution. You can also swap the `active.ident` with any of the columns in the `meta.data` using the function `SetIdent()`.
 
-```{r}
-DimPlot(b16, label = T, reduction = "tsne", group.by = "RNA_snn_res.0.2")
-DimPlot(b16, label = T, reduction = "tsne", group.by = "RNA_snn_res.0.4")
-DimPlot(b16, label = T, reduction = "tsne", group.by = "RNA_snn_res.0.6")
+```{r compare-resolutions-b16-all, fig.width=14, fig.height=3.5}
+r02 <- DimPlot(b16, label = T, reduction = "tsne", group.by = "RNA_snn_res.0.2")+labs(title="resolution 0.2")
+r04 <- DimPlot(b16, label = T, reduction = "tsne", group.by = "RNA_snn_res.0.4")+labs(title="resolution 0.4")
+r06 <- DimPlot(b16, label = T, reduction = "tsne", group.by = "RNA_snn_res.0.6")+labs(title="resolution 0.6")
+
+CombinePlots(plots=list(r02,r04,r06), ncol = 3)
 ```
 
-We observe that as the resolution factor increases, more clusters are shown, and that the biggest jump in the number of clusters occurs between resolution 0.2 and resolution 0.4. Often times, rare clusters with small numbers of cells will appear at higher resolutions. These rare clusters may have biological significance, and should be separated from other cell types when possible. For example, cluster 1 in resolution 0.2 appears to be a T cell cluster, but further separates into two clusters at a resolution of 0.4: a large cluster of CD8+ T cells (cluster 2, resolution 0.4) and a much smaller but distinct population of T-regulatory cells (cluster 11, resolution 0.4). I can make this judgement by examining the expression patterns of the genes CD8a, which defines CD8+ T cells, and Foxp3, which defines T-regulatory cells using a FeaturePlot (expression of a gene overlaid on top of a t-SNE plot):
+We observe that as the resolution factor increases, more clusters are shown, and that the biggest jump in the number of clusters occurs between resolution 0.2 and resolution 0.4. Often times, rare clusters with small numbers of cells will appear at higher resolutions. These rare clusters may have biological significance, and should be separated from other cell types when possible. For example, cluster 1 in resolution 0.2 appears to be a T cell cluster, but further separates into two clusters at a resolution of 0.4: a large cluster of CD8+ T cells (cluster 2, resolution 0.4) and a much smaller but distinct population of T-regulatory cells (cluster 11, resolution 0.4). I can make this judgement by examining the expression patterns of the genes CD8a, which defines CD8+ T cells, and Foxp3, which defines T-regulatory cells using a `FeaturePlot()` (expression of a gene overlaid on top of a t-SNE plot):
 
-```{r}
+```{r cd8-vs-foxp3-featureplot, fig.width=9, fig.height=3.5}
 FeaturePlot(b16, c("Cd8a", "Foxp3"))
 ```
 
 T-regulatory cells have vastly different functional properties compared to cytotoxic CD8+ T cells, and should definitely be given their own cluster definition. Based on this observation, I would determine 0.2 as too "low" of a resolution and choose either 0.4 or 0.6. Resolution 0.4 and 0.6 look very similar, except that cluster 6 from resolution 0.4 splits into clusters 6 and 11 in resolution 0.6. I will choose resolution 0.6 to work with for the rest of the analysis.
 
-## Identify cell types based on marker expression
+## Identify cell types
 
-Aside from examining gene expression patterns using ```FeaturePlot```, a more in-depth way of identifying the cell types corresponding to each cluster can be performed by finding cluster-specific genes using the function ```FindAllMarkers```. This function will return the genes that are most highly upregulated in each cluster compared to all other clusters. We can then read through the top 30 genes for each cluster and use these genes to judge what cell type they define.
+Aside from examining gene expression patterns using `FeaturePlot()`, a more in-depth way of identifying the cell types corresponding to each cluster can be performed by finding cluster-specific genes using the function `FindAllMarkers()`. This function will return the genes that are most highly upregulated in each cluster compared to all other clusters. We can then read through the top 30 genes for each cluster and use these genes to judge what cell type they define. This function also takes a long time to run, so I also use multicore processing for it.
 
 ```{r eval=F}
 # determine cell type-specific markers using FindAllMarkers
-plan("multiprocess", workers = 10)
+plan("multiprocess", workers = 4)
 b16.markers <- FindAllMarkers(b16, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
 plan("multiprocess", workers = 1)
 
@@ -188,13 +199,13 @@ load("b16_all_markers_res06_v3.Robj")
 
 ```{r}
 top_markers_all <- b16.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
-top_markers_all
 # write.csv(top_markers_all, file = "b16_all_markers_res06_v3.csv")
+top_markers_all
 ```
 
-Sifting through this table, we can assign cell types to each of the clusters. For example, cluster 1 is defined by high Ly6c2, Plac8, and Ccr2 expression which are all canonical monocyte markers, so it is likely that these represent monocytes. Similarly, cluster 2 has high Cd8a, Cd8b1, and Gzmb expression, suggesting that these cells are CD8+ cytotoxic T cells. I use this same thought process to identify each of the clusters in the dataset, and then store these designations in the variable ```new.cluster.ids``` below. I can use ```RenameIdents``` to rename the clusters and then display the labels on top of each cluster on the t-SNE plot.
+Sifting through this table, we can assign cell types to each of the clusters. For example, the markers that define cluster "0" include C1qa and Ms4a7, which are described in the literature as canonical markers of tumor associated macrophages (TAMs). Cluster 1 is defined by high Ly6c2, Plac8, and Ccr2 expression which are all monocyte markers, so it is likely that these represent monocytes. Cluster 2 has high Cd8a, Cd8b1, and Gzmb expression, suggesting that these cells are CD8+ cytotoxic T cells. I use this same thought process to identify each of the remaining clusters in the dataset, and then store these designations in the variable `new.cluster.ids` below. I can use `RenameIdents()` to rename the clusters and then display the labels on top of each cluster on the t-SNE plot.
 
-```{r fig.width=10, fig.height=5}
+```{r labeled-tsne-plot-b16-all, fig.width=10, fig.height=5}
 # res 0.6 cluster labels
 new.cluster.ids <- c("0- TAM 1",
                      "1- Monocyte",
@@ -214,7 +225,6 @@ new.cluster.ids <- c("0- TAM 1",
                      "15- pDC",
                      "16- TAM 5"
                      )
-
 b16.labeled <- b16
 names(new.cluster.ids) <- levels(b16.labeled)
 b16.labeled <- RenameIdents(b16.labeled, new.cluster.ids)
@@ -224,32 +234,37 @@ DimPlot(b16.labeled, label = T, reduction = "tsne")
 
 As expected, most of the cell types that come from similar origins cluster closely with one another. The different types of tumor associated macrophages (TAMs) seem to cluster near each other, likewise for the different types of dendritic cells. 
 
-## Subsetting, reclustering, and aggregating
+## Subsetting and reclustering
 
 Since we are interested in the tumor immune infiltrate, it makes sense to remove all the non-immune cells in the dataset. According to the materials and methods section of the manuscript, B16 tumor cells were spiked in to the sample, which likely corresponds to the melanocyte clusters we defined above. We also observe a small population of fibroblasts (cluster 14) that can also be removed. We can double-check that these cells are non-immune cells by checking for Ptprc (CD45) expression.
 
-```{r}
+```{r ptprc-featureplot-b16-all, fig.width=5, fig.height=3.5}
 FeaturePlot(b16.labeled, "Ptprc")
-VlnPlot(b16.labeled, "Ptprc")
 ```
 
-We observe that clusters 4, 7, 13, and 14 indeed have low CD45 expression. We can remove these cells using the ```subset``` function. Although cluster 16 also has low CD45 expression, the genes that define this cluster very closely resemble a novel macrophage population called hemophagocytes (Akilesh et al. 2019), which in my opinion qualifies it for inclusion as an "immune cell" despite its low CD45 expression.
+For a more quantitative view, we can plot a violin plot using the function `VlnPlot()`, which describes the overall expression of a gene across all clusters in the dataset:
 
-```{r}
+```{r ptprc-vlnplot-b16-all, fig.width=8, fig.height=4.5}
+VlnPlot(b16.labeled, "Ptprc", pt.size = 0.5)+NoLegend()
+```
+
+We observe that clusters 4, 7, 13, and 14 indeed have low CD45 expression. We can remove these cells using the `subset()` function. Although cluster 16 also has low CD45 expression, the genes that define this cluster very closely resemble a novel macrophage population called hemophagocytes (Akilesh et al. 2019), which in my opinion qualifies it for inclusion as an "immune cell" despite its low CD45 expression.
+
+```{r remove-non-immune-tsne, fig.width=6, fig.height=4}
 # remove non-immune cell clusters 4, 7, 13, 14
-# since the cluster numbers start at 0 instead of 1, have to indicies by 1 in order to subtract the clusters from vector
+# since the cluster numbers start at 0 instead of 1, have to shift indicies by 1 in order to subtract the clusters from vector
 b16 <- subset(b16, idents = c(0:16)[-c(5,8,14,15)])
 DimPlot(b16, label = T, reduction = "tsne")
 ```
 
-After removing the non-immune cells, we re-run the normalization, scaling, and clustering functions.
+We observe that the non-immune cell clusters have been removed. Now we can re-run the normalization, scaling, and clustering functions.
 
 ```{r eval = F}
 # re-normalize and scale the object after removing the non-CD45+ clusters
 b16 <- NormalizeData(b16, normalization.method = "LogNormalize", scale.factor = 10000)
 b16 <- FindVariableFeatures(b16, selection.method = "vst", nfeatures = 2000)
 all.genes <- rownames(b16)
-plan("multiprocess", workers = 10)
+plan("multiprocess", workers = 4)
 b16 <- ScaleData(b16, features = all.genes, vars.to.regress = c("nCount_RNA", "percent.mito", "percent.ribo"))
 plan("multiprocess", workers = 1)
 b16 <- RunPCA (b16, features = VariableFeatures(object = b16))
@@ -266,14 +281,14 @@ b16 <- RunTSNE(b16, dims = 1:40)
 load("b16_immune_v3.Robj")
 ```
 
-```{r}
+```{r tsne-reclustered-b16-immune, fig.width=6, fig.height=4}
 DimPlot(b16, label = T, reduction = "tsne")
 ```
 
-Aftwerwards, we can identify the cell types in the filtered, re-clustered object just as we did before, by first finding the cluster-specific markers using ```FindAllMarkers``` and then using these markers to assign cell types.
+Aftwerwards, we can identify the cell types in the filtered, re-clustered object just as we did before, by first finding the cluster-specific markers using `FindAllMarkers()`:
 
 ```{r eval=F}
-plan("multiprocess", workers = 10)
+plan("multiprocess", workers = 4)
 b16.markers <- FindAllMarkers(b16, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
 plan("multiprocess", workers = 1)
 
@@ -288,12 +303,13 @@ load("b16_immune_markers_res06_v3.Robj")
 
 ```{r}
 top_markers_immune <- b16.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
-top_markers_immune
-# can save the top markers per cluster for analysis records
 # write.csv(top_markers_immune, file = "b16_immune_markers_res06_v3.csv")
+top_markers_immune
 ```
 
-```{r fig.width = 10, fig.height = 5}
+Using the marker list, we can assign cell types to each cluster:
+
+```{r labeled-tsne-b16-immune, fig.width = 10, fig.height = 5}
 new.cluster.ids <- c("0- Classical Monocyte",
                      "1- TAM 1",
                      "2- TAM 2",
@@ -318,9 +334,9 @@ DimPlot(b16.labeled, label = T, reduction = "tsne")
 
 We observe a similar set of cell types as before, except that the monocytes have now split up into two groups. Based on the gene expression that define each group, there appears to be an activated population (cluster 0) and an unactivated population (cluster 6).
 
-The clusters are by default ordered by cell abundance, which makes looking at some of the visualizations complicated. It makes more intuitive sense to lump each cell type together (all monocytes together, all tams together, etc). You can reorder the clusters by manually specifying the order in the levels parameter of ```factor()```:
+The clusters are by default ordered by cell abundance, which makes looking at some of the visualizations complicated. It makes more intuitive sense to lump the labels for each cell type together (all monocytes together, all tams together, etc). You can reorder the clusters by manually specifying the order in the levels parameter of `factor()`:
 
-```{r}
+```{r reordered-tsne-b16-immune, fig.width = 10, fig.height = 5}
 # reorder by cell type:
 reordered.new.cluster.ids <- c("0- Classical Monocyte",
                                "6- Patrolling Monocyte",
@@ -343,7 +359,7 @@ b16.labeled@active.ident <- factor (b16.labeled@active.ident, levels = reordered
 DimPlot(b16.labeled, label = T, reduction = "tsne")
 ```
 
-If desired, clusters can be combined by naming them with the exact same names and using ```RenameIdents```. This type of aggregation can be performed when you wish to lump common cell types together. It is useful when you want to gain a high-level overview of the cellular composition of the dataset.
+If desired, clusters can be also combined by naming them with the exact same names using `RenameIdents()`. This type of aggregation can be performed when you wish to lump common cell types together. It is useful when you want to gain a high-level overview of the cellular composition of the dataset.
 
 ```{r}
 combined.cluster.ids <- c("Monocyte",
@@ -367,16 +383,20 @@ b16.combined <- RenameIdents(b16.combined, combined.cluster.ids)
 
 # reorder the clusters based on myeloid and lymphoid
 b16.combined@active.ident <- factor(b16.combined@active.ident, levels = c("TAM", "Monocyte", "cDC1", "cDC2", "pDC", "Migratory DC", "CD8", "Treg", "NK"))
+# store the aggregated clustering information in the meta.data
+b16.combined[["res06_aggregated"]] <- b16.combined@active.ident
 ```
 
-Using this method, these combined cluster designations are stored in the active.ident portion of the seurat object. The functions in Seurat will by default access ```active.ident```, so they all still work as expected:
+Using this method, these aggregated cluster designations are stored in the `active.ident` portion of the seurat object. We can also store this information in the `meta.data` in case we want to switch back and forth between the other clustering resolutions. The functions in Seurat will by default access `active.ident`, so they all still work as expected, now displaying fewer clusters in the aggregated object:
 
-```{r}
+```{r aggregated-tsne-b16-combined, fig.width=6, fig.height=4}
 DimPlot(b16.combined, label = T, reduction = "tsne")
 ```
 
+We can again obtain the markers for each of the aggregated cell types in the dataset:
+
 ```{r eval=F}
-plan("multiprocess", workers = 10)
+plan("multiprocess", workers = 4)
 b16.markers <- FindAllMarkers(b16.combined, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
 plan("multiprocess", workers = 1)
 
@@ -386,73 +406,73 @@ plan("multiprocess", workers = 1)
 
 ```{r include=F}
 # in order to speed up knitting the R notebook, I pre-load the processed object here
-load("b16_markers_aggregated_v3.Robj")
+load("b16_aggregate_markers_res06_v3.Robj")
 ```
 
 ```{r}
 top_markers_aggregate <- b16.markers %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
-top_markers_aggregate
 # write.csv(top_markers_aggregate, file = "b16_aggregate_markers_res06_v3.csv")
+top_markers_aggregate
 ```
+
+At this point, we are finished "processing" our Seurat object. We can start performing some visualizations in order to gain insight from the data, which I will go over in the next few sections.
 
 ---
 
-## Visualizations
+## Built-in Seurat Visualizations
 
-At this point, we can start performing some visualizations in order to gain insight from the data. We can start to answer questions such as:
+Seurat has a suite of built-in visualization functions for plotting cell composition and expression of genes across clusters. We can start to answer questions such as:
 
-* which cell types express gene X?
-* what percent of each cell type is represented in the dataset?
-* how do the percentages change in the WT tumors compared to the KO tumors?
+* Which cell types express gene X?
+* What percent of each cell type is represented in the dataset?
+* How do the percentages change in the ADAR1 KO tumors compared to the Control tumors?
 
 I will first showcase the basic built-in visualizations that come with the Seurat package. Then, I go more in-depth into various types of visualizations and data mining that can be performed on this processed Seurat object. For the purposes of this demonstration, I will be using the version of the Seurat object in which I've aggregated the clusters by cell type.
 
-### Built-in Seurat Visualizations
+### 1. FeaturePlot
 
-#### 1. FeaturePlot
+The `FeaturePlot()` is one of the most useful functions for determining gene expression patterns in your dataset. This, used in conjunction with the t-SNE plot, can be used side-by-side to visually assess which cell types express a given gene.
 
-The ```FeaturePlot``` is one of the most useful functions for determining gene expression patterns in your dataset. This, used in conjunction with the t-SNE plot, can be used side-by-side to visually assess which cell types express a given gene.
-
-```{r fig.width=10, fig.height=5}
-fp <- FeaturePlot(b16.combined, "Ccr2", pt.size = 0.8)+NoLegend()
-tp <- DimPlot(b16.combined, pt.size = 0.8, label = T, reduction = "tsne")+NoLegend()
+```{r featureplot-ccr2-with-tsne, fig.width=10, fig.height=3.5}
+fp <- FeaturePlot(b16.combined, "Ccr2", pt.size = 0.6)
+tp <- DimPlot(b16.combined, pt.size = 0.6, label = T, reduction = "tsne")
 CombinePlots(plots = list(tp,fp))
 ```
 
-In the example above, we observe that the chemokine receptor Ccr2 is expressed by cells in the monocyte cluster, as expected based on the literature. The beauty of single cell RNA-seq is that we can also assess the expression of this receptor in all the other cell types as well. Visually, we can observe that Tregs, NK cells, and cDC2 also express Ccr2 to a high degree. Furthermore, you can plot two genes on top of the same plot by setting ```blend = T```. This allows for some interesting comparisons to be made between pairs of genes that may have biological significance.
+In the example above, we observe that the chemokine receptor Ccr2 is expressed by cells in the monocyte cluster, as expected based on the literature. The beauty of single cell RNA-seq is that we can also assess the expression of this receptor in all the other cell types as well. Visually, we can observe that Tregs, NK cells, and cDC2 also express Ccr2 to a high degree. Furthermore, you can plot two genes on top of the same plot by setting `blend = T`. This allows for some interesting comparisons to be made between pairs of genes that may have biological significance.
 
-```{r fig.width=12,fig.height =3}
+```{r featureplot-blend-ccr2-ccl2, fig.width=12,fig.height =3}
 FeaturePlot(b16.combined, c("Ccl2", "Ccr2"), blend = T)
 ```
 
-In this case, I plot Ccr2 with its ligand, Ccl2. This gives me insight into which cells express the ligand for Ccl2, and which cells have its receptor, Ccr2. It is likely that Ccr2+ cells (monocytes, Tregs, etc.) will migrate into proximity with Ccl2+ cells (Tumor associated macrophages).
+In this case, I plot Ccr2 with its ligand, Ccl2. This gives me insight into which cells express the ligand for Ccl2, and which cells have its receptor, Ccr2. It is likely that Ccr2+ cells (monocytes, Tregs, etc.) will migrate into proximity with Ccl2+ cells, which appear to be tumor associated macrophages.
 
-#### 2. VlnPlot
+### 2. VlnPlot
 
-The FeaturePlots above are nice to make a visually compelling argument, but it is necessary to quantitate the amount of signal observed in each cluster. To do this, we can use the built-in function ```VlnPlot```, which will display the expression of a given gene in each of the clusters in ```active.ident```.
+The `FeaturePlot()` above are nice to make a visually compelling argument, but it is necessary to quantitate the amount of signal observed in each cluster. To do this, we can plot a "violin plot" using the built-in function `VlnPlot()`, which will display the expression of a given gene in each of the clusters in `active.ident`.
 
-```{r}
+```{r vlnplot-ccr2, fig.width=7, fig.height=3}
 VlnPlot(b16.combined, "Ccr2", pt.size =0.1)
 ```
 
 The width of the violin plot is a measure of the proportion of cells at the corresponding expression level. We observe that the monocyte cluster expresses the highest level of Ccr2.
 
-#### 3. RidgePlot
+### 3. RidgePlot
 
-An alternative to the ```VlnPlot``` is the ```RidgePlot```, which you can think of as flippin the violin plot on its side. This provides a density histogram that displays the magnitude and proportion of cells that express the gene for each cluster. Those who are used to looking at flow cytometry histograms may enjoy this type of plot more.
+An alternative to the `VlnPlot()` is the `RidgePlot()`, which you can think of as flipping the violin plot on its side. This provides a density histogram that displays the magnitude and proportion of cells that express the gene for each cluster. Those who are used to looking at flow cytometry histograms may enjoy this type of plot more.
 
-```{r}
+```{r ridgeplot-ccr2, fig.width=7, fig.height=3}
 RidgePlot(b16.combined, "Ccr2")
 ```
 
-#### 4. DotPlot
+### 4. DotPlot
 
-If you wish to compare the expression of several genes at the same time across all clusters, the ```DotPlot``` is a very useful way of doing so. The size of the dots in the plot correspond do the percentage of cells within the cluster that are positive for expression (have an expression value > 0). The color of the dot represents the magnitude of expression of the cells that are positive (i.e. do they express high levels, or low levels of the gene relative to other clusters?).
+If you wish to compare the expression of several genes at the same time across all clusters, the `DotPlot()` is a very useful way of doing so. The size of the dots in the plot correspond do the percentage of cells within the cluster that are positive for expression (have an expression value > 0). The color of the dot represents the magnitude of expression of the cells that are positive (i.e. do they express high levels, or low levels of the gene relative to other clusters?).
 
-```{r}
+```{r dotplot-cell-specific-markers, fig.width=8, fig.height=4}
 cluster_specific_genes <- c("C1qa", "Apoe","Ly6c2", "Ccr2", "Xcr1", "Clec9a", "Cd209a", "Clec4a4", "Siglech", "Ccr9", "Ccr7", "Fscn1", "Cd8a", "Cd3e", "Foxp3", "Il2ra", "Ncr1", "Klra4")
 
-# can feed in an RColorBrewer pallete, I chose RdBu here, also adjusted the x-axis labels to match tick marks
+# can use a RColorBrewer pallete, I chose RdBu here
 DotPlot(b16.combined, features = rev(cluster_specific_genes), cols = "RdBu", plot.legend = T)+
   theme(axis.text.x = element_text( angle = 90, vjust = 0.5, hjust = 1))
 ```
@@ -461,7 +481,7 @@ Here, I chose to plot some genes that are described in the literature to be spec
 
 We can also use the dot plot to make knockout vs wildtype comparisons in this dataset. In the example below, I can subset on a specific group (in this case, CD8 T cells) and then assess the activation / exhaustion level in CD8 T cells from the KO vs WT samples using a DotPlot. These genes were obtained from Carmona et al. 2019 (https://www.biorxiv.org/content/10.1101/800847v1).
 
-```{r}
+```{r dotplot-cd8-activation-exhaustion, fig.width=8, fig.height=3}
 # subset just the CD8 cluster
 cd8 <- subset(b16.combined, idents = "CD8")
 
@@ -472,49 +492,49 @@ t_cell_genes <- c("Entpd1","Havcr2", "Tigit", "Lag3","Pdcd1", "Batf","Tox","Id2"
 
 DotPlot(cd8, features = rev(t_cell_genes), cols = "RdBu", plot.legend = T)+
   theme(axis.text.x = element_text( angle = 90, vjust = 0.5, hjust = 1))
-TSNEPlot(cd8)
 ```
 
 We observe clear heterogeneity between the CD8 T cells isolated from each of the different samples. The genes between Entpd1 and Id2 represent T cell exhaustion genes, between Ccl3 and Cd69 represent T cell activation genes, and between Cxcr3 and Sell represent naive/memory T cell genes. Control_S3 and ADAR_S2 have a greater T cell activation signature compared to the other two samples, with higher levels of Gzmb, Ifng, Ccl5, and Ly6c2 expression. It does not appear that the activation signature correlates with the ADAR1 KO samples, since both the control and ADAR1 KO groups have a sample that displays this phenotype. However, there are some exceptions, such as CD69 that appears to be higher in both ADAR1 KO samples and lower in both Control samples.
 
-#### 5. Heatmap
+### 5. Heatmap
 
-A way to examine a large set of genes on a per-cell basis is by heatmap, using ```DoHeatmap```. Each column of the heatmap represents a single cell, organized by cluster. Each row of the heatmap represents a gene from the marker list you input, which typically is also organized by cluster. We can input the top set of markers from ```FindAllMarkers``` into Seurat's built-in heatmap function, ```DoHeatmap```. This results in a "diagonal" heatmap in which you can view how enriched each cluster-specific set of genes is for each cluster. You can also use this heatmap to visualize how your expression of your own genes of interest are spread across the clusters.
+A way to examine a large set of genes on a per-cell basis is by heatmap, using `DoHeatmap()`. Each column of the heatmap represents a single cell, organized by cluster. Each row of the heatmap represents a gene from the marker list you input, which typically is also organized by cluster. We can input the top set of markers from `FindAllMarkers()` into Seurat's built-in heatmap function, `DoHeatmap()`. This results in a "diagonal" heatmap in which you can view how enriched each cluster-specific set of genes is for each cluster. You can also use this heatmap to visualize how your expression of your own genes of interest are spread across the clusters.
 
-```{r}
+```{r heatmap-cell-specific-markers}
+# b16.markers is the output from running FindAllMarkers()
 top_b16_markers <- b16.markers %>% group_by(cluster) %>% top_n(n = 5, wt = avg_logFC)
 
 DoHeatmap(b16.combined, cells = WhichCells(b16.combined, downsample = 50, seed = 1), features = top_b16_markers$gene, size = 3.5, angle = 15, hjust =0)
 ```
 
-We observe that a lot of "cluster-specific" genes from FindAllMarkers are actually expressed at varying levels by multiple cell types. For example, scanning from left to right for Irf8, which was determined to be a cDC1-specific gene, is enriched in both cDC1s as well as in pDCs and Migratory DCs. In contrast, a lot of the genes for pDCs appear to be exclusive to this cell type, in which almost no yellow signal is observed in any bin other than the pDC cluster.
+We observe that a lot of "cluster-specific" genes from `FindAllMarkers()` are actually expressed at varying levels by multiple cell types. For example, scanning from left to right for Irf8, which was determined to be a cDC1-specific gene, is enriched in both cDC1s as well as in pDCs and Migratory DCs. In contrast, a lot of the genes for pDCs appear to be exclusive to this cell type, in which almost no yellow signal is observed in any bin other than the pDC cluster.
 
-#### 6. FeatureScatter
+### 6. FeatureScatter
 
-The ```FeatureScatter``` function can be used to assess the correlation between two genes within a cluster. For example, we can examine how CD8 T-cell activation-associated genes such as Gzmb are correlated with exhaustion-associated genes such as Tox.
+The `FeatureScatter()` function can be used to assess the correlation between two genes within a cluster. For example, we can examine how CD8+ T-cell activation genes such as Gzmb are correlated with exhaustion genes such as Tox.
 
-```{r}
+```{r featurescatter-tox-gzmb, fig.width=6, fig.height=4}
 FeatureScatter(cd8, "Tox", "Gzmb")+
   geom_smooth(method = "lm", se = F)
 ```
 
 As expected, we observe that these two genes are negatively correlated. T cells which express more Tox are likely to be more exhausted, and these cells also tend to express less Gzmb.
 
-### Self-made Visualizations
+## Self-made Visualizations
 
 Below are some functions and analysis methods that I wrote to supplement the built-in visualization methods in Seurat. These visualizations help answer questions such as:
 
-* what proportion of total cells does each cluster represent, and how does this look across KO/Control groups?
-* what proportion of cells are high or low for a gene?
-* what is the expression of a gene signature across cells?
-* which samples are most similar to each other based on cell composition?
-* what biological pathways are enriched in one group vs another group of cells?
+* What proportion of total cells does each cluster represent, and how does this look across KO/Control groups?
+* What proportion of cells are high or low for a gene?
+* What is the expression of a gene signature across cells?
+* Which samples are most similar to each other based on cell composition?
+* What biological pathways are enriched in one group vs another group of cells?
 
-#### 1. Cell proportion plot
+### 1. Cell proportion plot
 
-It is often helpful to determine what proportion of total cells each cell cluster represents. Given a seurat object, the function ```plot_proportions``` below will plot a bargraph showing the % of total cells for each cluster. It will pull from the active.ident slot.
+It is often helpful to determine what proportion of total cells each cell cluster represents. Given a seurat object, the function `plot_proportions()` below will plot a bargraph showing the % of total cells for each cluster. It will pull from the `active.ident` slot.
 
-```{r}
+```{r plot-celltype-proportions, fig.width=5, fig.height=3}
 plot_proportions <- function (seuratobj){
   proportions <- table(seuratobj@active.ident)/length(seuratobj@active.ident)*100
   proportions <- as.data.frame(proportions)
@@ -531,13 +551,13 @@ plot_proportions <- function (seuratobj){
 plot_proportions(b16.combined)
 ```
 
-We observe that the majority of cells are TAMs, followed by monocytes and CD8 T cells. If you are interested in how the proportions are represented across each individual ADAR1 KO and Control sample, see the function ```plot_group_proportions``` in the Group-wise analysis section below.
+We observe that the majority of cells are TAMs, followed by monocytes and CD8 T cells. If you are interested in how the proportions are represented across each individual ADAR1 KO and Control sample, see the function `plot_group_proportions()` in the group-wise analysis section below.
 
-#### 2. UMI / nCount_RNA plot
+### 2. UMI / nCount_RNA plot
 
-A good way to QC your data is to check how many total unique molecular identifiers (transcripts) are in each cell, as a proxy for how transcriptionally active the cell is. This is often referred to as "UMI count" or "nCount_RNA". To do this, we can extract the nCount_RNA from the meta.data, and then plot the gradient on top of a t-SNE plot. The function ```umi_plot``` will do this as shown below:
+A good way to QC your data is to check how many total unique molecular identifiers (transcripts) are in each cell, as a proxy for how transcriptionally active the cell is. This is often referred to as "UMI count" or "nCount_RNA". To do this, we can extract the nCount_RNA from the `meta.data`, and then plot the gradient on top of a t-SNE plot. The function `umi_plot()` will do this as shown below:
 
-```{r}
+```{r umi-ncountrna-plot, fig.width=6, fig.height=4}
 umi_plot <- function (seuratobj) {
   # extract the t-sne coordinates
   seuratobj[["tsne1"]] <-  Embeddings(object = seuratobj, reduction = "tsne")[,"tSNE_1"]
@@ -550,7 +570,7 @@ umi_plot <- function (seuratobj) {
 umi_plot(b16.combined)
 ```
 
-We observe that the highest number of transcripts are found in the CD8 T cell cluster and the TAM 1 macrophage cluster. If there is a dead cell cluster, usually it will have the lowest number of transcripts. To get a better grasp on a per-cluster basis, we can use dplyr to summarize the average UMI/nCount_RNA grouped by cluster. We can also summarize other items of interest such as the average nFeature, percent.mito, etc, using the function ```summarize_metadata``` below:
+We observe that the highest number of transcripts are found in the CD8 T cell cluster and the TAM 1 macrophage cluster. If there is a dead cell cluster, usually it will have the lowest number of transcripts. To get a better grasp on a per-cluster basis, we can use dplyr to summarize the average UMI/nCount_RNA grouped by cluster. We can also summarize other items of interest such as the average nFeature, percent.mito, etc, using the function `summarize_metadata()` below:
 
 ```{r}
 summarize_metadata <- function (seuratobject, group.by = "RNA_snn_res.0.6") {
@@ -566,11 +586,11 @@ summarize_metadata <- function (seuratobject, group.by = "RNA_snn_res.0.6") {
 summarize_metadata(b16.combined, group.by = "RNA_snn_res.0.6")
 ```
 
-#### 3. Signature plots
+### 3. Signature plot
 
-Although FeaturePlots are useful for determining the expression of a single gene across the single cell dataset, we might be interested in how a gene signature (multiple genes in aggregate) behave. For example, there are many genes that contribute to T cell exhaustion. To do this, we have to make an aggregate metric composed of the expression values of all of the genes in our signature, and then overlay this aggregate metric ontop of the t-SNE plot, using the ```signature_plot``` function below:
+Although FeaturePlots are useful for determining the expression of a single gene across the single cell dataset, we might be interested in how a gene signature (multiple genes in aggregate) behave. For example, there are many genes that contribute to T cell exhaustion. To do this, we have to make an aggregate metric composed of the expression values of all of the genes in our signature, and then overlay this aggregate metric ontop of the t-SNE plot, using the `signature_plot()` function below:
 
-```{r}
+```{r signature-plot, fig.width=5.5, fig.height=4}
 signature_genes <- c("Havcr2", "Tigit", "Lag3","Pdcd1","Tox")
 
 signature_plot <- function (seuratobject,signature_genes){
@@ -585,37 +605,42 @@ signature_plot <- function (seuratobject,signature_genes){
 signature_plot(b16.combined, signature_genes)
 ```
 
-#### 4. Identify cells by barcode
+### 4. Identify cells by barcode
 
-Sometimes, I want to zoom in on a subcluster of cells and re-cluster them in order to determine what further heterogeneity exists within that cluster. After doing so, I often want to determine where sub-clusters lie in the original t-SNE plot. You can pull out individual cell barcodes by either using the function ```WhichCells```, or by simplying taking the rownames of the meta.data corresponding to the cells you want. Below, I further subcluster the CD8 T cell cluster, and select one of the new subcluster's barcodes by using ```WhichCells```:
+Sometimes, I want to zoom in on a subcluster of cells and re-cluster them in order to determine what further heterogeneity exists within that cluster. After doing so, I often want to determine where sub-clusters lie in the original t-SNE plot. You can pull out individual cell barcodes by either using the function `WhichCells()`, or by simply taking the rownames of the `meta.data` corresponding to the cells you want. Below, is an example where I further subcluster the CD8 T cell cluster and pull out of the new subclusters' barcodes:
 
-```{r fig.width=4, fig.heigh=3, message=F, warning=F}
+```{r message=F, warning=F, results='hide'}
 # isolate cd8 from the main object
 cd8 <- subset(b16.combined, idents = "CD8")
 
 # re-cluster only the cd8 T cells
 cd8 <- FindNeighbors(cd8, dims = 1:40)
 cd8 <- FindClusters(cd8, resolution = c(0.2))
-TSNEPlot(cd8, label = T)
+```
+```{r tsne-plot-cd8-subclustered, fig.width=4, fig.height=3 }
+DimPlot(cd8, label = T, reduction = "tsne")
+```
 
-# select barcodes from cluster 1, using function WhichCells
+We observe that the original CD8 cluster is now split into two. We can access the barcodes for cluster 1 using `WhichCells()`:
+
+```{r}
 cd8_cluster1_barcodes <- WhichCells(cd8, idents = 1)
 ```
 
 I now use the barcodes to identify the cells on graphs such as the t-SNE plot:
 
-```{r fig.width=10, fig.height=4}
+```{r highlight-cells-barcode-tsne-plot, fig.width=10, fig.height=4}
 # highlight the cells using cells.highlight
-ta <- TSNEPlot(b16, label = T, cells.highlight = cd8_cluster1_barcodes) + labs(title = "Using cells.highlight")
+ta <- DimPlot(b16, label = T, cells.highlight = cd8_cluster1_barcodes, reduction = "tsne") + labs(title = "Using cells.highlight")
 
 # or identify the cells manually in the meta.data (better if you need to store this information for future use)
 b16@meta.data$cd8_cluster1 <- ifelse(rownames(b16@meta.data) %in% cd8_cluster1_barcodes, TRUE, FALSE)
-tb <- TSNEPlot(b16,group.by = "cd8_cluster1") + labs(title = "Adding to meta.data \n and using group.by")
+tb <- DimPlot(b16, group.by = "cd8_cluster1", reduction = "tsne") + labs(title = "Adding to meta.data \n and using group.by")
 
 CombinePlots(plots = list(ta, tb))
 ```
 
-Instead of using the subset function, you can also manually pull out barcodes based on the coordinates of the cells in the t-SNE graph. This is often useful when you are interested in a small population of cells in a specific area of the t-SNE graph that are not separated by the conventional clustering algorithms. Once you have the barcodes, you can even re-assign some of the active.idents to a new cell type, and then find markers that are enriched in these barcodes ```using FindMarkers```. For example, we might be interested in knowing what the few cells in the top right-hand corner are.
+Instead of using the subset function, you can also manually pull out barcodes based on the coordinates of the cells in the t-SNE graph. This is often useful when you are interested in a small population of cells in a specific area of the t-SNE graph that are not separated by the conventional clustering algorithms. Once you have the barcodes, you can even re-assign some of the `active.ident` values to a new cell type, and then find markers that are enriched in these barcodes `using FindMarkers()`. For example, we might be interested in knowing what the few cells in the top right-hand corner are.
 
 ```{r}
 b16[["tsne1"]] <-  Embeddings(object = b16, reduction = "tsne")[,"tSNE_1"]
@@ -623,21 +648,33 @@ b16[["tsne2"]] <-  Embeddings(object = b16, reduction = "tsne")[,"tSNE_2"]
 
 top_right_barcodes <- rownames(b16@meta.data)[which(b16@meta.data$tsne1 > 25 & b16@meta.data$tsne2 > 25)]
 top_right_barcodes
-
-TSNEPlot(b16, cells.highlight = top_right)
 ```
 
-After pulling out the barcodes, we observe that this small island is madde up of 13 cells. We can assign these 13 cells a new "ident" within active.ident, and then find the markers that define this small cluster of cells using ```FindMarkers```:
+After pulling out the barcodes, we observe that this small island is madde up of 13 cells. We verify that we've pulled out the right cells by identifying them in the t-SNE plot:
+
+```{r unknown-cell-highlight-tsne-plot, fig.width=5, fig.height=3}
+DimPlot(b16, cells.highlight = top_right_barcodes, reduction = "tsne")
+```
+
+We can now assign these 13 cells a new "ident" within `active.ident`, and then find the markers that define this small cluster of cells using `FindMarkers()`:
 
 ```{r}
-# add these barcodes to the active.ident as a new cluster called unknown
+# add barcodes to the active.ident as a new cluster called unknown
 levels(b16.combined@active.ident) <- c(levels(b16.combined@active.ident), "unknown")
-b16.combined@active.ident[top_right] <- "unknown"
-
-# now, this new cluster shows up in our seurat functions
-table(b16.combined@active.ident)
-TSNEPlot(b16.combined, label = T)
+b16.combined@active.ident[top_right_barcodes] <- "unknown"
 ```
+
+The cluster named "unknown" now shows up in `active.ident`, as well as most Seurat visualizations such as DimPlot:
+
+```{r}
+table(b16.combined@active.ident)
+```
+
+```{r tsne-plot-unknown-labeled, fig.width=5.7, fig.height=3.5}
+DimPlot(b16.combined, label = T, reduction = "tsne")
+```
+
+This means that we can now call `FindMarkers()` on the object and specify it to return markers for the cluster named "unknown":
 
 ```{r eval=F}
 unknown_markers <- FindMarkers(b16.combined, "unknown")
@@ -649,21 +686,28 @@ load("unknown_cluster_markers.Robj")
 ```
 
 ```{r}
-unknown_markers[order(unknown_markers$avg_logFC, decreasing = T)[1:30],]
+unknown_markers[order(unknown_markers$avg_logFC, decreasing = T)[1:10],]
 ```
 
-Based on the FindMarkers result, the 13 cells that make up the unknown cluster look like a non-immune stromal cell type. Perhaps these cells were not captured with other stromal cell types when we first filtered those clusters out, or they could be a small population of doublets.
+Based on the `FindMarkers()` result, the 13 cells that make up the unknown cluster look like a non-immune cell type. Perhaps these cells were not captured with other non-immune cell types when we first filtered those clusters out, or they could be a small population of doublets.
 
-#### 5. Proportion of positive cells by cluster
+Now that we are done with this analysis, we can restore the `active.ident` of `b16.combined` back to its original state, using the aggregated cluster designations that we had previously stored in the `meta.data` under the column name "res06_aggregated".
 
-Sometimes, it's useful to know how many cells express a given gene at any level (i.e. have any expression value greater than 0). The function ```percent_positive``` finds the proportion of cells within specified clusters that are positive for a given marker. It does so using a simple ```ifelse()``` statement.
+```{r}
+# restore the original active.ident of b16.combined
+b16.combined <- SetIdent(b16.combined, value = "res06_aggregated")
+```
+
+### 5. Percent of positive cells by cluster
+
+Sometimes, it's useful to know how many cells express a given gene at any level (i.e. have any expression value greater than 0). The function `get_percent_positive()` finds the proportion of cells within specified clusters that are positive for a given marker. It does so using a simple `ifelse()` statement.
 
 ```{r warning=F}
-percent_positive <- function(seuratobj, marker, idents = "all"){
+get_percent_positive <- function(seuratobj, marker, idents = "all"){
   seuratobj@meta.data$markerpos <- ifelse(seuratobj@assays$RNA@data[marker,] > 0, 1, 0)
   seuratobj@meta.data$active.ident <- as.character(seuratobj@active.ident)
   if (idents != "all")
-    seuratobj@meta.data$active.ident[!(seuratobj@meta.data$active.ident %in% idents)] <- "OTHER"
+    seuratobj@meta.data$active.ident[!(seuratobj@meta.data$active.ident %in% idents)] <- "Other"
   summary_data <- seuratobj@meta.data %>% 
     group_by(active.ident) %>% 
     summarize (proportion_cd45 = n()/nrow(seuratobj@meta.data)*100,
@@ -671,20 +715,35 @@ percent_positive <- function(seuratobj, marker, idents = "all"){
   summary_data
 }
 
-percent_positive(b16.combined, "Ccr2")
+get_percent_positive(b16.combined, "Ccr2")
 ```
 
-As expected, we observe that the highest proportion of Ccr2+ cells are observed in the Monocyte cluster. If we want to focus specifically on one or two clusters, we can specify them as an argument and the other cell types will be lumped as an "OTHER" category:
+As expected, we observe that the highest proportion of Ccr2+ cells are observed in the Monocyte cluster. If we want to focus specifically on one or two clusters, we can specify them as an argument and the other cell types will be lumped as an "Other" category:
 
-```{r}
-percent_positive(b16.combined, "Ccr2", c("pDC", "CD8", "Monocyte"))
+```{r warning=F}
+get_percent_positive(b16.combined, "Ccr2", c("pDC", "CD8", "Monocyte"))
 ```
 
-#### 6. Median split t-SNE plot and proportion plot
+We can also generate a simple visualization of this data using a barplot, displaying the percentage positive for each cell type:
 
-Even within a cell type, there is often a range of expression of certain genes, from high to low. For example, CD8 T cells may express high to low levels of exhaustion markers such as PD1 (gene name Pdcd1). They all still qualify as CD8 T cells, but the PD1-high cells may behave different from PD1-low cells. This distinction can be important, and so we should have a way to analytically identify the cells that are high or low for a given gene. To do this, we can calculate the median gene expression and categorize each cell using an ifelse() statement. The function ```tsne_median_split``` below will identify and plot the high vs low expressors for a given gene.
+```{r percent-positive-plot, fig.width=6, fig.height=3.5}
+plot_percent_positive <- function (seuratobj, marker, idents = "all") {
+  summary_data <- get_percent_positive(seuratobj, marker, idents)
+  ggplot(summary_data, aes(x = active.ident, y = proportion_markerpos))+
+    geom_bar(aes(fill = active.ident),stat = "identity")+
+    labs (y = paste("Percent positive for", marker),
+          x = "Cell Type")+
+    theme(axis.text.x = element_text(angle = 45, hjust=1))
+}
+plot_percent_positive(b16.combined, "Ccr2")
+```
 
-```{r}
+
+### 6. Median splitting by gene
+
+Even within a cell type, there is often a range of expression of certain genes, from high to low. For example, CD8 T cells may express high to low levels of exhaustion markers such as PD1 (gene name Pdcd1). They all still qualify as CD8 T cells, but the PD1-high cells may behave different from PD1-low cells. This distinction can be important, and so we should have a way to analytically identify the cells that are high or low for a given gene. To do this, we can calculate the median gene expression and categorize each cell using an `ifelse()` statement. The function `tsne_median_split()` below will identify and plot the high vs low expressors for a given gene.
+
+```{r median-split-by-gene-tsne, fig.width=5, fig.height=3}
 cd8 <- subset(b16.combined, idents = "CD8")
 
 median_split <- function (seuratobj, gene, method = "plot") {
@@ -716,13 +775,13 @@ head(cd8_pd1_de_genes)
 
 As expected, we observe that Pdcd1 shows up as a differentially expressed gene that is higher in the PD1-high group. We also observe that other markers of exhaustion such as Lag3 show up as enriched in these cells.
 
-### Group-wise analysis
+## Group-wise analysis
 
 So far, we have only been analyzing the cell composition of the dataset as a whole. The dataset is composed of four aggregated samples, ADAR_S1, ADAR_S2, Control_S3, and Control_S4. The functions were written below to examine the differences between the ADAR1 KO and Control samples.
 
-#### 1. Group-wise cell proportion plot
+### 1. Group-wise cell proportion plot
 
-There are different total cell numbers coming from each original sample (e.g. ADAR_S1 has 1590 total cells, while Control_S3 has 1674, etc.) Thus, if we want to compare cell composition across samples, we have to normalize for cell count. To do this, we first group by sample, then dividing the number of cells each of that sample's clusters by the total cells in that sample. The function ```get_group_proportions``` below performs that action, returning the proportion of cells that each cluster represents for each group.
+There are different total cell numbers coming from each original sample (e.g. ADAR_S1 has 1590 total cells, while Control_S3 has 1674, etc.) Thus, if we want to compare cell composition across samples, we have to normalize for cell count. To do this, we first group by sample, then dividing the number of cells each of that sample's clusters by the total cells in that sample. I wrote the function `get_group_proportions()` below to return the proportion of cells that each cluster represents for each group.
 
 ```{r}
 get_group_proportions <- function (seuratobj, group.by = "active.ident") {
@@ -741,9 +800,9 @@ get_group_proportions <- function (seuratobj, group.by = "active.ident") {
 get_group_proportions(b16.combined)
 ```
 
-We can visualize this information by plotting either a side-by-side barplot or a stacked barplot, using the function ```plot_group_proportions``` below:
+We can visualize this information by using the function `plot_group_proportions()` below:
 
-```{r}
+```{r group-celltype-proportion-plot-dodge, fig.width=8, fig.height=4}
 plot_group_proportions <- function (seuratobj, graph.type = "dodge") {
   # get the proportions using get_group_proportions()
   count_populations <- get_group_proportions(seuratobj)
@@ -761,22 +820,27 @@ plot_group_proportions <- function (seuratobj, graph.type = "dodge") {
 }
 
 plot_group_proportions(b16.combined, graph.type = "dodge")
+```
+
+I made the function plot a side-by-side "dodged" barplot by default, but you can specify "stacked" to obtain a stacked barplot instead:
+
+```{r group-celltype-proportion-plot-stacked, fig.width=5, fig.height=3}
 plot_group_proportions(b16.combined, graph.type = "stacked")
 ```
 
-Interestingly, we observe lower amounts of TAMs in the ADAR1 KO samples compared to the control samples, and higher amounts of monocytes and CD8 T cells. Given that there are only two samples per group, the data are relatively noisy. We can get a more in-depth look by analyzing the un-aggregated version of the data, ```b16.labeled```:
+Interestingly, we observe lower amounts of TAMs in the ADAR1 KO samples compared to the control samples, and higher amounts of monocytes and CD8 T cells. Given that there are only two samples per group, the data are relatively noisy. We can get a more in-depth look by analyzing the un-aggregated version of the data, `b16.labeled`:
 
-```{r fig.width = 10}
+```{r group-celltype-proportion-unaggregated, fig.width = 10}
 plot_group_proportions(b16.labeled)
 ```
 
 We observe that most of the monocyte changes were due to a drop in the classical monocyte subset in the control samples. It is also interesting that the TAM 2 and TAM 3 populations are much lower in the ADAR1 KO samples than in the Control samples. Looking at the markers specific to these TAM clusters, we observe higher levels of genes such as Arg1, suggesting that loss of ADAR1 is doing something to reduce numbers of this specific subtype of macrophage.
 
-#### 2. Plot heatmap to cluster samples or cell types
+### 2. Heatmap clustering samples / cell types
 
-Now that we have defined the cell composition by sample, we can perform some correlative analysis between samples in order to determine how similar the cell composition of each sample is to one another. This can be achieved by simply using the ```cor()``` function and plotting a heatmap using ```pheatmap```. We can also visualize which sample has the most of any given cell type by plotting the raw values on the heatmap and scaling by the cell type column.
+Now that we have defined the cell composition by sample, we can perform some correlative analysis between samples in order to determine how similar the cell composition of each sample is to one another. This can be achieved by simply using the `cor()` function and plotting a heatmap using `pheatmap::pheatmap()`. We can also visualize which sample has the most of any given cell type by plotting the raw values on the heatmap and scaling by the cell type column.
 
-```{r}
+```{r heatmap-by-sample-proportions, fig.width=5, fig.height=3}
 plot_heatmap_proportions <- function (seuratobj, graph.type = "by.cell") {
   count_populations <- get_group_proportions(seuratobj)
   reformatted <- count_populations %>% reshape2::dcast(formula = orig.ident~active.ident, value.var = "proportion")
@@ -794,19 +858,19 @@ plot_heatmap_proportions <- function (seuratobj, graph.type = "by.cell") {
 plot_heatmap_proportions(b16.combined, graph.type = "by.sample")
 ```
 
-The "by.sample" heatmap surprisingly shows that ADAR_S1 and Control_S3 are more similar to each other than the other samples! One would have expected that the two ADAR1 KO samples would cluster together. Looking at the proportion plot from the previous section, the proportion values indeed look very similar across cell types between ADAR_S1 and Control_S3.
+The `by.sample` heatmap surprisingly shows that ADAR_S1 and Control_S3 are more similar to each other than the other samples! One would have expected that the two ADAR1 KO samples would cluster together. Looking at the proportion plot from the previous section, the proportion values indeed look very similar across cell types between ADAR_S1 and Control_S3.
 
-```{r}
+```{r heatmap-by-celltype-proportions, fig.width=6, fig.height=4}
 plot_heatmap_proportions(b16.combined, graph.type = "by.cell")
 ```
 
-The "by.cell" version of the heatmap allows you to see which samples have the most of any given cell type. For example, Control_S4 appears to have by far more TAMs than other samples, and Control_S3 appears to have the highest proportion of cDC1s.
+The `by.cell` version of the heatmap allows you to see which samples have the most of any given cell type. For example, Control_S4 appears to have by far more TAMs than other samples, and Control_S3 appears to have the highest proportion of cDC1s.
 
-#### 3. Median expression bar graphs split by group
+### 3. Median splitting across groups
 
-Similar to the median-split analysis above, this analysis assigns high vs low expression to the cells in the dataset, then calculates the proportion of cells from each group that lie in either the high or low expression category. Below, I split the data based on the PD1 expression.
+Similar to the median-split analysis above, this analysis assigns high vs low expression to the cells in the dataset, then calculates the proportion of cells from each group that lie in either the high or low expression category. Below, I wrote the function `proportions_median_split()` to split the data based on the PD1 expression.
 
-```{r}
+```{r median-split-by-group, fig.width=5, fig.height=3}
 proportions_median_split <- function (seuratobj, gene) {
   # assigns the high or low expression based on median split to the meta.data
   gene_expression <- seuratobj@assays$RNA@data[gene,]
@@ -831,9 +895,9 @@ proportions_median_split(cd8, "Pdcd1")
 
 We observe that there are higher propoortions of PD1-low cells in the ADAR1 KO samples compared to the control samples. This is in accord with the activation/exhaustion DotPlot, which also showed that this gene was enriched in the ADAR1 KO samples.
 
-#### 4. Differential gene expression analysis between groups
+### 4. Differential gene expression analysis between groups
 
-We can use the FindMarkers function in Seurat to find the most differential genes between two groups. Previously, we were looking at cell-type specific markers. Here, we first subset out the cell type of interest, then set the active.ident to the ADAR1 KO or Control groups. The "markers" returned by the FindMarkers function, comparing the ADAR1 KO and Control groups, will essentially provide a list of the differentially expressed genes between the two groups. We can loop through the different cell types that we want to perform this analysis on using ```get_DE_genes`` below:
+We can use the `FindMarkers()` function in Seurat to find the most differential genes between two groups. Previously, we were looking at cell-type specific markers. Here, we first subset out the cell type of interest, then set the `active.ident` to the ADAR1 KO or Control groups. The "markers" returned by the FindMarkers function, comparing the ADAR1 KO and Control groups, will essentially provide a list of the differentially expressed genes between the two groups. We can loop through the different cell types that we want to perform this analysis on, using the function `get_DE_genes()` below:
 
 ```{r eval=F}
 de_groups <- c("CD8", "Monocyte")
@@ -861,13 +925,13 @@ head(cd8_de)
 
 We find that the ADAR1 KO CD8 T cells have upregulated interferon response genes such as Isg15, among others. It will be interesting to research what these genes may mean in the context of tumor immunology.
 
-#### 5. Gene Set Enrichment Analysis (GSEA) across groups
+### 5. Gene Set Enrichment Analysis (GSEA) across groups
 
 Gene Set Enrichment Analysis is a very useful tool to assess whether pathways consisting of a collection of several genes are enriched in one group compared to another. For example, the interferon gamma response pathway is composed of 200 genes. Although one specific gene in the pathway may not be statistically significant in your differential gene expression analysis, the pathway composed of all of the genes could be significantly enriched. This is useful if you have only subtle changes in your dataset. Typically, GSEA is used to analyze bulk RNA-sequencing samples, but here I will show you how to perform GSEA on scRNAseq samples.
 
 We observed above that the interferon response gene, Isg15, was enriched in the ADAR1 KO samples, but what about the rest of the interferon response genes? I can use GSEA to answer this question.
 
-First, we need to rank all the genes available by their enrichment in the ADAR1 KO samples vs the Control samples (i.e. for every gene, quantify how much higher or lower it is in group A vs group B). Then, we plug this list of genes into either the GSEA application from the Broad Institute (https://www.gsea-msigdb.org/gsea/index.jsp), or into the R package ```fgsea``` from Bioconductor (https://bioconductor.org/packages/release/bioc/html/fgsea.html). If you choose to use the GSEA application rather than the R package, the rank files have to be in a very specific format. The genes must be all upper-case, and there can only be a column for the gene name and its corresponding average log-foldchange. Below is some code that will generate rank files that can be used in either application.
+First, we need to rank all the genes available by their enrichment in the ADAR1 KO samples vs the Control samples (i.e. for every gene, quantify how much higher or lower it is in group A vs group B). Then, we plug this list of genes into either the GSEA application from the Broad Institute (https://www.gsea-msigdb.org/gsea/index.jsp), or into the R package `fgsea` from Bioconductor (https://bioconductor.org/packages/release/bioc/html/fgsea.html). If you choose to use the GSEA application rather than the R package, the rank files have to be in a very specific format. The genes must be all upper-case, and there can only be a column for the gene name and its corresponding average log-foldchange. Below is some code that will generate rank files that can be used in either application.
 
 ```{r eval=F}
 # divide cells into either "ADAR" or "Control"
@@ -899,16 +963,19 @@ load("CD8_ADAR_vs_Control_ranked.Robj")
 head(cd8_ranked_list)
 ```
 
-Now that we have the ranked list, we can plug it into the GSEA application or into the fgsea package. Below, I will show you how to use the fgsea package. First, we have to download the pathway files from the GSEA MSigDB webpage at: https://www.gsea-msigdb.org/gsea/msigdb/collections.jsp and load them in using ```fgsea::gmtPathways```. A commonly-used set of pathways is the HALLMARK pathway set, which I will use below.
+Now that we have the ranked list, we can plug it into either the GSEA application or into the fgsea package. Below, I will show you how to use the `fgsea` package. First, we have to download the pathway files from the GSEA MSigDB webpage at: https://www.gsea-msigdb.org/gsea/msigdb/collections.jsp and load them in using `fgsea::gmtPathways()`. A commonly-used set of pathways is the HALLMARK pathway set, which I will use below.
+
+```{r message=F, warning=F}
+library(fgsea)
+```
 
 ```{r}
-library(fgsea)
 # read in file containing lists of genes for each pathway
 hallmark_pathway <- gmtPathways("pathway_files/h.all.v7.0.symbols.gmt.txt")
 head(names(hallmark_pathway))
 ```
 
-Then, we have to turn our ranked list into a vector in which the avg_logFC is named with the gene name, as well as get rid of any NA values or duplicate gene entries.
+Then, we have to turn our ranked list into a vector in which the `avg_logFC` is named with the gene name, as well as get rid of any NA values or duplicate gene entries.
 
 ```{r}
 # formats the ranked list for the fgsea() function
@@ -929,7 +996,7 @@ cd8_ranked_list <- prepare_ranked_list(cd8_ranked_list)
 head(cd8_ranked_list)
 ```
 
-Now that we have a cleaned-up and named vector, we can plug it into the fgsea() function along with the hallmark pathway object, which generates a table of results containing the enrichment scores associated with each pathway:
+Now that we have a cleaned-up vector of avg_logFC named by gene, we can plug it into the `fgsea::fgsea()` function along with the hallmark pathway object, which generates a table of results containing the enrichment scores associated with each pathway:
 
 ```{r}
 # generate GSEA result table using fgsea() by inputting the pathway list and ranked list
@@ -939,27 +1006,32 @@ fgsea_results <- fgsea(pathways = hallmark_pathway,
                   maxSize = 500,
                   nperm= 1000)
 
-fgsea_results %>% arrange (desc(NES))
+fgsea_results %>% arrange (desc(NES)) %>% select (pathway, padj, NES) %>% head()
 ```
 
 The enrichment scores (ES) and normalized enrichment scores (NES) tell us how much more the collection of genes in that pathway are expressed in the ADAR1 KO samples vs the Control samples. In this case, we observe that the most enriched pathway in the ADAR1 KO group is the interferon gamma response pathway.
 
-We can plot enrichment curves for individual pathways using the built-in ```plotEnrichment``` function, which I've written a small wrapper for below. In these plots, the black ticks on the x-axis indicate a gene in the pathway, and the green curve is a measure of how enriched the genes are for either the ADAR1 KO group (left side) or the Control group (right side). An example of the interferon gamma response pathway is below, along with the IL2 STAT5 signaling pathway, which is highly enriched in the opposite direction towards the control samples.
+We can plot enrichment curves for individual pathways using the built-in `fgsea::plotEnrichment()` function, which I've written a small wrapper for below. In these plots, the black ticks on the x-axis indicate a gene in the pathway, and the green curve is a measure of how enriched the genes are for either the ADAR1 KO group (left side) or the Control group (right side). An example of the interferon gamma response pathway is below.
 
-```{r}
+```{r gsea-ifn-gamma-response-curve, fig.width=5, fig.height=3}
 plot_enrichment <- function (geneset, pathway, ranked_list) {
   plotEnrichment(geneset[[pathway]], ranked_list)+labs (title = pathway)
 }
 
 # example of pathway highly enriched in ADAR
 plot_enrichment(hallmark_pathway, "HALLMARK_INTERFERON_GAMMA_RESPONSE" , cd8_ranked_list)
+```
+
+As a comparison, I've also plotted the IL2 STAT5 signaling pathway, which is highly enriched in the opposite direction (towards the control samples).
+
+```{r gsea-il2-stat5-signaling-curve, fig.width=5, fig.height=3}
 # example of pathway enriched in Control
 plot_enrichment(hallmark_pathway,"HALLMARK_IL2_STAT5_SIGNALING", cd8_ranked_list)
 ```
 
-The fsgea_results table above is useful, but it would be nicer to view in a more graphical format. Below, we can construct a "waterfall" plot, which is basically a sideways bar plot of enrichment scores for each of the pathways. The significantly enriched pathways are highlighted in a different color.
+The `fsgea_results` table above is useful, but it would be nicer to view in a more graphical format. Below, we construct a "waterfall" plot using the function `waterfall_plot()`, which is basically a sideways bar plot of enrichment scores for each of the pathways. The significantly enriched pathways are highlighted in a different color.
 
-```{r}
+```{r gsea-waterfall-plot}
 waterfall_plot <- function (fsgea_results, graph_title) {
   fgsea_results %>% 
     mutate(short_name = str_split_fixed(pathway, "_",2)[,2])%>%
@@ -974,7 +1046,7 @@ waterfall_plot <- function (fsgea_results, graph_title) {
 waterfall_plot(fgsea_results, "Pathways enriched in ADAR1 KO vs Control CD8 T cells")
 ```
 
-Using this visualization, we can quickly point out the significantly enriched pathways. It is interesting to note that both interferon response pathways as well as both myc targets pathways are present in the top fraction.
+Using this visualization, it is easy to quickly identify the significantly enriched pathways. It is interesting to note that both the interferon alpha response and interferon gamma response pathways are significant, as well as both of the MYC targets pathways.
 
 ---
 
@@ -987,5 +1059,5 @@ Based on the analysis above, we can make some overall conclusions about the TME 
 * In the ADAR1 KO samples, CD8 T cells are increased in frequency compared to the Control samples. Interestingly, there is a decrease in Arg1+ macrophages and an increase in classical monocytes in the ADAR1 KO samples, as well as a slight increase in numbers of T-regulatory cells.
 * There is an enrichment of interferon gamma response pathways in CD8 T cells from ADAR1 KO samples compared to Control samples, suggesting a heightened/more cytotoxic inflammatory response is occuring in the ADAR1 KO tumors.
 
-This concludes my analysis! I hope that my workflow and code helps researchers out there analyze their own single cell RNA-sequencing experiments.
+There are many more insights to be gained from mining this dataset, and we are just scratching the surface here. I hope that my analysis pipeline and visualization techniques will help those of you out there analyze your own single cell RNA-sequencing experiments.
 
