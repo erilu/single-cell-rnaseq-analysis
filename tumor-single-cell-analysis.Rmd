@@ -1,7 +1,7 @@
 ---
-title: "Single-cell RNAseq analysis of B16 tumor infiltrating immune cells"
+title: "Single-cell RNA-seq analysis of B16 tumor infiltrating immune cells"
 author: Erick Lu
-date: February 3, 2020
+date: "February 12, 2020 \n\n[GitHub Repo](https://github.com/erilu/single-cell-rnaseq-analysis)"
 output:
   html_document:
     toc: true
@@ -11,11 +11,9 @@ output:
 
 ## Introduction
 
-Here, I provide a step by step analysis of the publicly available single cell RNA-sequencing dataset from Ishizuka et al. 2019, using the R package `Seurat`. This single cell RNA-sequencing dataset was generated using the 10X Genomics platform, and was derived from tumor-infiltrating leukocytes isolated from mouse B16 tumors.
+Here, I provide a step-by-step analysis of the publicly available single-cell RNA-sequencing dataset from Ishizuka et al. 2019, using the R package `Seurat`. This single-cell RNA-sequencing dataset was generated using the 10X Genomics platform, and was derived from tumor-infiltrating leukocytes isolated from mouse B16 tumors. The publication can be found at: https://www.ncbi.nlm.nih.gov/pubmed/30559380.
 
-The publication can be found at: https://www.ncbi.nlm.nih.gov/pubmed/30559380. The data can be downloaded from: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE110746. This data consists of a set of matrices which dictate the cellular barcode, gene name, and expression values for each cell (barcodes.tsv.gz, genes.tsv.gz, and matrix.mtx.gz). These matricies are the standardized output provided by the 10X Genomics software Cell Ranger after processing the raw fastq files.
-
-This analysis is meant to serve as an example of how to analyze single cell RNA-sequencing data generated using the 10X Genomics platform using the R package `Seurat`. I provide details for each step so that researchers with only basic knowledge of R will be able to analyze a single cell RNA-seq experiment. I hope that this will help researchers who are planning to perform their own single-cell RNA-sequencing experiment have an easier time making sense of their data.
+This analysis is meant to serve as an example of how to analyze single-cell RNA-sequencing data generated using the 10X Genomics platform. I provide details for each step so that researchers with only basic knowledge of R will be able to analyze a single-cell RNA-seq experiment. I also provide some custom-made visualizations that can be used to gain a more in-depth understanding of the data. I hope that this will help researchers who are planning to perform their own single-cell RNA-sequencing experiment have an easier time making sense of their data.
 
 ---
 
@@ -31,11 +29,13 @@ This analysis was performed using `Seurat` version 3.0.2. I also use the `future
 
 ## Create the Seurat object
 
-The `Read10X()` function is used to read in the data matricies. If you run into issues with this step, check whether your files are named correctly. For this analysis, I had to remove the GSE identifier (e.g. change GSE110746_barcodes.tsv to barcodes.tsv, and so on). I placed the three data files into a directory named "haining", and specified this directory for the data.dir parameter. If you are getting data from a Cell Ranger pipeline, you can find them in the outs/filtered_feature_bc_matrix folder.
+The data can be downloaded from: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE110746. Scroll to the bottom of that webpage and download the three files: GSE110746_barcodes.tsv.gz, GSE110746_genes.tsv.gz, and GSE110746_matrix.mtx.gz. These are a set of matrices which dictate the cellular barcode, gene name, and expression values for each cell. These matricies are the standardized output provided by the 10X Genomics software Cell Ranger after processing the raw fastq files.
+
+The `Read10X()` function is used to read in the data matricies. If you run into issues with this step, check whether your files are named correctly. For this analysis, I had to remove the GSE identifier (e.g. change GSE110746_barcodes.tsv to barcodes.tsv, and so on). I unzipped and placed the three data files into a directory named "haining", and specified this directory for the `data.dir` parameter. If you are getting data from a Cell Ranger pipeline, you can find them in the outs/filtered_feature_bc_matrix folder.
 
 ```{r}
 # Read in data
-raw_data <- Read10X(data.dir = "haining")
+raw_data <- Read10X(data.dir = "raw_data/haining")
 ```
 
 Once the raw data is read in, you can create a Seurat object using the function `CreateSeuratObject()`.
@@ -119,7 +119,7 @@ plan("multiprocess", workers = 1)
 
 ```{r include = F}
 # in order to speed up knitting the R notebook, I pre-load the processed object here
-load("b16_all_v3.Robj")
+load("output/b16_all_v3.Robj")
 ```
 
 Once the values have been normalized and scaled, we can begin to cluster each cell based on their gene expression patterns. Our goal is that cells that express similar patterns of genes (high gene "X", low gene "Y", etc.) will cluster together. To do this, we use the `RunPCA()` function.
@@ -138,7 +138,7 @@ Here, I visually inspect the scree plot to determine how many PCs to choose, usu
 
 ```{r include = F}
 # in order to speed up knitting the R notebook, I pre-load the processed object here
-load("b16_all_v3.Robj")
+load("output/b16_all_v3.Robj")
 ```
 
 ```{r eval=F}
@@ -152,7 +152,7 @@ b16 <- RunTSNE(b16, dims = 1:40)
 
 The resolution parameter for the `FindClusters()` function is what you have to pay the most attention to. A higher resolution value will result in a larger number of clusters being identified, and vice versa. It dictates how over- or under- clustered your cells will be. Often times, you will have to try a bunch of different resolution values, examine how your cells cluster in each scenario, and determine which makes the most biological sense. You should ask yourself questions such as: do I observe cell clusters that are biologically distinct being aggregated with each other (e.g. NK cells and T cells being combined in the same cluster)? If so, your resolution is too low and should be higher. In contrast, if you observe multiple clusters of what appears to be the same cell type, you might have chosen too high of a resolution.
 
-That being said, single cell RNA-sequencing is great at detecting novel sub-populations of cells and revealing heterogeneity within what we previously may have thought to have been a single cell type. It is important to invest time into determining whether you are observing true biological heterogeneity vs. an artefact of choosing too high of a resolution. In my opinion, it is safer to choose a lower resolution to begin with, and then sub-cluster individual clusters of interest to determine whether there is any further heterogeneity that is biologically relevant. I will show an example of this later on in the analysis.
+That being said, single-cell RNA-sequencing is great at detecting novel sub-populations of cells and revealing heterogeneity within what we previously may have thought to have been a single cell type. It is important to invest time into determining whether you are observing true biological heterogeneity vs. an artefact of choosing too high of a resolution. In my opinion, it is safer to choose a lower resolution to begin with, and then sub-cluster individual clusters of interest to determine whether there is any further heterogeneity that is biologically relevant. I will show an example of this later on in the analysis.
 
 Here, we pass a vector of resolution values ranging from 0.2 to 0.6 to `FindClusters()`. We observe that the cluster attributions are defined as columns in `b16@meta.data` below. The field `b16@active.ident` houses the cluster definitions for the "right-most" resolution of 0.6.
 
@@ -180,7 +180,7 @@ T-regulatory cells have vastly different functional properties compared to cytot
 
 ## Identify cell types
 
-Aside from examining gene expression patterns using `FeaturePlot()`, a more in-depth way of identifying the cell types corresponding to each cluster can be performed by finding cluster-specific genes using the function `FindAllMarkers()`. This function will return the genes that are most highly upregulated in each cluster compared to all other clusters. We can then read through the top 30 genes for each cluster and use these genes to judge what cell type they define. This function also takes a long time to run, so I also use multicore processing for it.
+Aside from examining gene expression patterns using `FeaturePlot()`, a more in-depth way of identifying the cell types corresponding to each cluster can be performed by finding cluster-specific genes using the function `FindAllMarkers()`. This function will return the genes that are most highly upregulated in each cluster compared to all other clusters. We can then read through the top 30 genes for each cluster and use these genes to judge what cell type they define. This function also takes a long time to run, so I also use multicore processing for it. I have also provided a csv file with the top markers per cluster in the `output/` folder of this repo if you would like to look through it.
 
 ```{r eval=F}
 # determine cell type-specific markers using FindAllMarkers
@@ -194,7 +194,7 @@ plan("multiprocess", workers = 1)
 
 ```{r include=F}
 # in order to speed up knitting the R notebook, I pre-load the processed object here
-load("b16_all_markers_res06_v3.Robj")
+load("output/b16_all_markers_res06_v3.Robj")
 ```
 
 ```{r}
@@ -278,7 +278,7 @@ b16 <- RunTSNE(b16, dims = 1:40)
 
 ```{r include = F}
 # in order to speed up knitting the R notebook, I pre-load the processed object here
-load("b16_immune_v3.Robj")
+load("output/b16_immune_v3.Robj")
 ```
 
 ```{r tsne-reclustered-b16-immune, fig.width=6, fig.height=4}
@@ -298,7 +298,7 @@ plan("multiprocess", workers = 1)
 
 ```{r include=F}
 # in order to speed up knitting the R notebook, I pre-load the processed object here
-load("b16_immune_markers_res06_v3.Robj")
+load("output/b16_immune_markers_res06_v3.Robj")
 ```
 
 ```{r}
@@ -307,7 +307,7 @@ top_markers_immune <- b16.markers %>% group_by(cluster) %>% top_n(n = 10, wt = a
 top_markers_immune
 ```
 
-Using the marker list, we can assign cell types to each cluster:
+You can find the marker files in the `output/` folder of this repo. Using the marker list, we can assign cell types to each cluster:
 
 ```{r labeled-tsne-b16-immune, fig.width = 10, fig.height = 5}
 new.cluster.ids <- c("0- Classical Monocyte",
@@ -406,7 +406,7 @@ plan("multiprocess", workers = 1)
 
 ```{r include=F}
 # in order to speed up knitting the R notebook, I pre-load the processed object here
-load("b16_aggregate_markers_res06_v3.Robj")
+load("output/b16_aggregate_markers_res06_v3.Robj")
 ```
 
 ```{r}
@@ -439,7 +439,7 @@ tp <- DimPlot(b16.combined, pt.size = 0.6, label = T, reduction = "tsne")
 CombinePlots(plots = list(tp,fp))
 ```
 
-In the example above, we observe that the chemokine receptor Ccr2 is expressed by cells in the monocyte cluster, as expected based on the literature. The beauty of single cell RNA-seq is that we can also assess the expression of this receptor in all the other cell types as well. Visually, we can observe that Tregs, NK cells, and cDC2 also express Ccr2 to a high degree. Furthermore, you can plot two genes on top of the same plot by setting `blend = T`. This allows for some interesting comparisons to be made between pairs of genes that may have biological significance.
+In the example above, we observe that the chemokine receptor Ccr2 is expressed by cells in the monocyte cluster, as expected based on the literature. The beauty of single-cell RNA-seq is that we can also assess the expression of this receptor in all the other cell types as well. Visually, we can observe that Tregs, NK cells, and cDC2 also express Ccr2 to a high degree. Furthermore, you can plot two genes on top of the same plot by setting `blend = T`. This allows for some interesting comparisons to be made between pairs of genes that may have biological significance.
 
 ```{r featureplot-blend-ccr2-ccl2, fig.width=12,fig.height =3}
 FeaturePlot(b16.combined, c("Ccl2", "Ccr2"), blend = T)
@@ -520,7 +520,7 @@ FeatureScatter(cd8, "Tox", "Gzmb")+
 
 As expected, we observe that these two genes are negatively correlated. T cells which express more Tox are likely to be more exhausted, and these cells also tend to express less Gzmb.
 
-## Self-made Visualizations
+## Custom Visualizations
 
 Below are some functions and analysis methods that I wrote to supplement the built-in visualization methods in Seurat. These visualizations help answer questions such as:
 
@@ -588,7 +588,7 @@ summarize_metadata(b16.combined, group.by = "RNA_snn_res.0.6")
 
 ### 3. Signature plot
 
-Although FeaturePlots are useful for determining the expression of a single gene across the single cell dataset, we might be interested in how a gene signature (multiple genes in aggregate) behave. For example, there are many genes that contribute to T cell exhaustion. To do this, we have to make an aggregate metric composed of the expression values of all of the genes in our signature, and then overlay this aggregate metric ontop of the t-SNE plot, using the `signature_plot()` function below:
+Although FeaturePlots are useful for determining the expression of a single gene across the single-cell dataset, we might be interested in how a gene signature (multiple genes in aggregate) behave. For example, there are many genes that contribute to T cell exhaustion. To do this, we have to make an aggregate metric composed of the expression values of all of the genes in our signature, and then overlay this aggregate metric ontop of the t-SNE plot, using the `signature_plot()` function below:
 
 ```{r signature-plot, fig.width=5.5, fig.height=4}
 signature_genes <- c("Havcr2", "Tigit", "Lag3","Pdcd1","Tox")
@@ -682,7 +682,7 @@ unknown_markers <- FindMarkers(b16.combined, "unknown")
 ```
 
 ```{r include=F}
-load("unknown_cluster_markers.Robj")
+load("output/unknown_cluster_markers.Robj")
 ```
 
 ```{r}
@@ -919,7 +919,7 @@ get_DE_genes(b16.combined,de_groups)
 ```
 
 ```{r}
-cd8_de <- read.csv("CD8_ADAR_vs_Control_DE.csv", header = T, row.names = 1)
+cd8_de <- read.csv("output/CD8_ADAR_vs_Control_DE.csv", header = T, row.names = 1)
 head(cd8_de)
 ```
 
@@ -931,7 +931,7 @@ Gene Set Enrichment Analysis is a very useful tool to assess whether pathways co
 
 We observed above that the interferon response gene, Isg15, was enriched in the ADAR1 KO samples, but what about the rest of the interferon response genes? I can use GSEA to answer this question.
 
-First, we need to rank all the genes available by their enrichment in the ADAR1 KO samples vs the Control samples (i.e. for every gene, quantify how much higher or lower it is in group A vs group B). Then, we plug this list of genes into either the GSEA application from the Broad Institute (https://www.gsea-msigdb.org/gsea/index.jsp), or into the R package `fgsea` from Bioconductor (https://bioconductor.org/packages/release/bioc/html/fgsea.html). If you choose to use the GSEA application rather than the R package, the rank files have to be in a very specific format. The genes must be all upper-case, and there can only be a column for the gene name and its corresponding average log-foldchange. Below is some code that will generate rank files that can be used in either application.
+First, we need to rank all the genes available by their enrichment in the ADAR1 KO samples vs the Control samples (i.e. for every gene, quantify how much higher or lower it is in group A vs group B). Then, we plug this list of genes into either the GSEA application from the Broad Institute (https://www.gsea-msigdb.org/gsea/index.jsp), or into the R package `fgsea` from Bioconductor (https://bioconductor.org/packages/release/bioc/html/fgsea.html). If you choose to use the GSEA application rather than the R package, the rank files have to be in a very specific format. The genes must be all upper-case, and there can only be a column for the gene name and its corresponding average log-foldchange. Below is some code that will generate rank files that can be used in either application. You can find these files in the `output/` folder of this repo.
 
 ```{r eval=F}
 # divide cells into either "ADAR" or "Control"
@@ -956,7 +956,7 @@ rownames(cd8_ranked_list) <- NULL
 ```
 
 ```{r include=F}
-load("CD8_ADAR_vs_Control_ranked.Robj")
+load("output/CD8_ADAR_vs_Control_ranked.Robj")
 ```
 
 ```{r}
@@ -1059,5 +1059,4 @@ Based on the analysis above, we can make some overall conclusions about the TME 
 * In the ADAR1 KO samples, CD8 T cells are increased in frequency compared to the Control samples. Interestingly, there is a decrease in Arg1+ macrophages and an increase in classical monocytes in the ADAR1 KO samples, as well as a slight increase in numbers of T-regulatory cells.
 * There is an enrichment of interferon gamma response pathways in CD8 T cells from ADAR1 KO samples compared to Control samples, suggesting a heightened/more cytotoxic inflammatory response is occuring in the ADAR1 KO tumors.
 
-There are many more insights to be gained from mining this dataset, and we are just scratching the surface here. I hope that my analysis pipeline and visualization techniques will help those of you out there analyze your own single cell RNA-sequencing experiments.
-
+There are many more insights to be gained from mining this dataset, and we are just scratching the surface here. I hope that my analysis pipeline and visualization techniques will help those of you out there analyze your own single-cell RNA-sequencing experiments.
