@@ -40,6 +40,8 @@ Here, I provide a step-by-step analysis of the publicly available single-cell RN
 
 This analysis is meant to serve as an example of how to analyze single-cell RNA-sequencing data generated using the 10X Genomics platform. I provide details for each step so that researchers with only basic knowledge of R will be able to analyze a single-cell RNA-seq experiment. I also provide some custom-made visualizations that can be used to gain a more in-depth understanding of the data. I hope that this will help researchers who are planning to perform their own single-cell RNA-sequencing experiment have an easier time making sense of their data.
 
+You can find the html-rendered R notebook for this analysis at: https://erilu.github.io/single-cell-rnaseq-analysis/, which is nicer to read and allows you to view data table output interactively.
+
 ------------------------------------------------------------------------
 
 Load packages
